@@ -24,8 +24,8 @@ from pathlib import Path
 # НАСТРОЙКИ
 # ─────────────────────────────────────────────────────────────────────────────
 
-DATA_ROOT  = Path("data")               # корневая папка, где лежат npl3/, npl4/ и т.д.
-OUTPUT_DIR = Path("data/figures")       # куда сохранять графики
+DATA_ROOT  = Path("data")                               # корневая папка, где лежат npl3/, npl4/ и т.д.
+OUTPUT_DIR = Path("figures/data_analysis")              # куда сохранять графики
 OUTPUT_DIR.mkdir(exist_ok=True)
 
 # Стиль графиков

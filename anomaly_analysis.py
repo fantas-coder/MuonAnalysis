@@ -25,13 +25,15 @@ import matplotlib.pyplot as plt
 import matplotlib.gridspec as gridspec
 from scipy import stats as scipy_stats
 from pathlib import Path
+import scipy
+
 
 # ─────────────────────────────────────────────────────────────────────────────
 # НАСТРОЙКИ
 # ─────────────────────────────────────────────────────────────────────────────
 
 DATA_ROOT  = Path("data")       # папка с npl3/, npl4/ и т.д.
-OUTPUT_DIR = Path("./figures")
+OUTPUT_DIR = Path("./figures/anomaly_analysis")
 OUTPUT_DIR.mkdir(exist_ok=True)
 
 # Рабочие конфигурации
@@ -350,218 +352,519 @@ def cross_detector_check(npl: str, binning: str,
 # 6. ВИЗУАЛИЗАЦИЯ
 # ─────────────────────────────────────────────────────────────────────────────
 
-def plot_anomaly_analysis(npl_main: str = "npl4", binning_main: str = "2.0Grad",
-                          theta_min: float = 58.0, theta_max: float = 90.0,
-                          save: bool = True):
-    """
-    Комплексный рисунок из 9 панелей:
-      (0,0–1) Тепловые карты npl4 и npl6 с выделением нулевых бинов
-      (0,2)   Число ненулевых бинов по детекторам
-      (1,0)   Суммарные треки по детекторам
-      (1,1)   Гистограмма N_tracks (лог-шкала) + IQR-порог
-      (1,2)   Q-Q plot для log(1+N)
-      (2,0–1) Boxplot по детекторам
-      (2,2)   Сводная таблица
-    """
-    fig = plt.figure(figsize=(22, 20))
-    fig.suptitle(
-        f"Анализ пропусков и аномалий в данных  |  "
-        f"npl4, npl6 / {binning_main}  |  Детекторы {GOOD_DETS}",
-        fontsize=12, fontweight="bold", y=0.99,
-    )
-    gs = gridspec.GridSpec(3, 3, figure=fig,
-                           hspace=0.55, wspace=0.38,
-                           top=0.96, bottom=0.05,
-                           left=0.07, right=0.97)
+# def plot_anomaly_analysis(npl_main: str = "npl4", binning_main: str = "2.0Grad",
+#                           theta_min: float = 58.0, theta_max: float = 90.0,
+#                           save: bool = True):
+#     """
+#     Комплексный рисунок из 9 панелей:
+#       (0,0–1) Тепловые карты npl4 и npl6 с выделением нулевых бинов
+#       (0,2)   Число ненулевых бинов по детекторам
+#       (1,0)   Суммарные треки по детекторам
+#       (1,1)   Гистограмма N_tracks (лог-шкала) + IQR-порог
+#       (1,2)   Q-Q plot для log(1+N)
+#       (2,0–1) Boxplot по детекторам
+#       (2,2)   Сводная таблица
+#     """
+#     fig = plt.figure(figsize=(22, 20))
+#     fig.suptitle(
+#         f"Анализ пропусков и аномалий в данных  |  "
+#         f"npl4, npl6 / {binning_main}  |  Детекторы {GOOD_DETS}",
+#         fontsize=12, fontweight="bold", y=0.99,
+#     )
+#     gs = gridspec.GridSpec(3, 3, figure=fig,
+#                            hspace=0.55, wspace=0.38,
+#                            top=0.96, bottom=0.05,
+#                            left=0.07, right=0.97)
+#
+#     TITLE_FS  = 9    # заголовки панелей
+#     LABEL_FS  = 8    # подписи осей
+#     TICK_FS   = 7    # метки делений
+#     LEGEND_FS = 8    # легенды
+#
+#     def style_ax(ax, title="", xlabel="", ylabel=""):
+#         ax.set_title(title, fontsize=TITLE_FS, fontweight="bold", pad=4)
+#         ax.set_xlabel(xlabel, fontsize=LABEL_FS, labelpad=2)
+#         ax.set_ylabel(ylabel, fontsize=LABEL_FS, labelpad=2)
+#         ax.tick_params(labelsize=TICK_FS)
+#
+#     # ── (0,0–1) Тепловые карты ──────────────────────────────────────────────
+#     for col, npl in enumerate(["npl4", "npl6"]):
+#         ax = fig.add_subplot(gs[0, col])
+#         acc = sum_all_detectors(npl, binning_main)
+#         if acc is None:
+#             ax.set_title(f"{npl} — нет данных")
+#             continue
+#
+#         sub = acc[(acc[:, 0] >= theta_min) & (acc[:, 0] <= theta_max)]
+#         t_b = np.unique(sub[:, 0])
+#         p_b = np.unique(sub[:, 1])
+#         grid = np.zeros((len(t_b), len(p_b)))
+#         ti = {v: i for i, v in enumerate(t_b)}
+#         pi = {v: i for i, v in enumerate(p_b)}
+#         for row in sub:
+#             if row[0] in ti and row[1] in pi:
+#                 grid[ti[row[0]], pi[row[1]]] = row[2]
+#
+#         ax.pcolormesh(p_b, t_b, np.where(grid == 0, 1, np.nan),
+#                       cmap="Greys", alpha=0.4, shading="auto", vmin=0, vmax=1)
+#         masked = np.ma.masked_equal(grid, 0)
+#         im = ax.pcolormesh(p_b, t_b, masked, cmap="hot", shading="auto")
+#         cb = plt.colorbar(im, ax=ax, label="Треки", shrink=0.85)
+#         cb.ax.tick_params(labelsize=TICK_FS)
+#         cb.set_label("Треки", fontsize=LABEL_FS)
+#
+#         zero_pct = (grid == 0).sum() / grid.size * 100
+#         style_ax(ax,
+#                  title=f"{npl}/{binning_main} — {zero_pct:.1f}% нулевых бинов (серые)",
+#                  xlabel="φ (°)", ylabel="θ (°)")
+#
+#     # ── (0,2) Ненулевых бинов по детекторам ─────────────────────────────────
+#     ax = fig.add_subplot(gs[0, 2])
+#     for npl, col, marker in [("npl4", "#2196F3", "o"), ("npl6", "#4CAF50", "s")]:
+#         vals = []
+#         for det in GOOD_DETS:
+#             d = load_tracks(npl, binning_main, det)
+#             if d is None:
+#                 vals.append(0)
+#                 continue
+#             sub = d[(d[:, 0] >= theta_min) & (d[:, 0] <= theta_max)]
+#             vals.append((sub[:, 2] > 0).sum())
+#         ax.plot(GOOD_DETS, vals, color=col, marker=marker, label=npl,
+#                 lw=1.5, markersize=5)
+#         ax.axhline(np.mean(vals), color=col, ls="--", alpha=0.4)
+#     style_ax(ax,
+#              title="Заполненность бинов\nпо детекторам",
+#              xlabel="Детектор",
+#              ylabel=f"Ненул. бинов ({theta_min:.0f}–{theta_max:.0f}°)")
+#     ax.legend(fontsize=LEGEND_FS)
+#     ax.set_xticks(GOOD_DETS)
+#     ax.tick_params(axis='x', labelsize=TICK_FS - 1, rotation=45)
+#
+#     # ── (1,0) Суммарные треки по детекторам ──────────────────────────────────
+#     ax = fig.add_subplot(gs[1, 0])
+#     w = 0.4
+#     for k, (npl, col) in enumerate([("npl4", "#2196F3"), ("npl6", "#4CAF50")]):
+#         vals, colors_bar = [], []
+#         for det in GOOD_DETS:
+#             d = load_tracks(npl, binning_main, det)
+#             vals.append(0 if d is None else
+#                         d[(d[:, 0] >= theta_min) & (d[:, 0] <= theta_max), 2].sum())
+#             colors_bar.append(col)
+#         xs = [d + (k - 0.5) * w for d in GOOD_DETS]
+#         ax.bar(xs, [v / 1e3 for v in vals], width=w,
+#                color=colors_bar, label=npl, alpha=0.85,
+#                edgecolor="k", linewidth=0.4)
+#     style_ax(ax,
+#              title=f"Треков на детектор ({theta_min:.0f}–{theta_max:.0f}°)",
+#              xlabel="Детектор", ylabel="Треков (тыс.)")
+#     ax.set_xticks(GOOD_DETS)
+#     ax.tick_params(axis='x', labelsize=TICK_FS - 1, rotation=45)
+#     ax.legend(fontsize=LEGEND_FS)
+#
+#     # ── (1,1) Гистограмма N_tracks ───────────────────────────────────────────
+#     ax = fig.add_subplot(gs[1, 1])
+#     for npl, col, ls in [("npl4", "#2196F3", "-"), ("npl6", "#4CAF50", "--")]:
+#         all_n = []
+#         for det in GOOD_DETS:
+#             d = load_tracks(npl, binning_main, det)
+#             if d is None:
+#                 continue
+#             sub = d[(d[:, 0] >= theta_min) & (d[:, 0] <= theta_max) & (d[:, 2] > 0)]
+#             all_n.extend(sub[:, 2].tolist())
+#         all_n = np.array(all_n)
+#         ax.hist(all_n, bins=60, color=col, alpha=0.45, label=npl,
+#                 density=True, edgecolor=col, linewidth=0.3, ls=ls)
+#         q1, q3 = np.percentile(all_n, 25), np.percentile(all_n, 75)
+#         thr = q3 + IQR_K * (q3 - q1)
+#         ax.axvline(thr, color=col, ls=":", lw=1.5,
+#                    label=f"{npl} порог≈{thr:.0f}")
+#     style_ax(ax,
+#              title=f"Распределение N_tracks\n(ненул. бины, {theta_min:.0f}–{theta_max:.0f}°)",
+#              xlabel="N_tracks в бине", ylabel="Плотность")
+#     ax.legend(fontsize=LEGEND_FS)
+#     ax.set_yscale("log")
+#
+#     # ── (1,2) Q-Q plot ────────────────────────────────────────────────────────
+#     ax = fig.add_subplot(gs[1, 2])
+#     d_qq = load_tracks(npl_main, binning_main, 4)
+#     if d_qq is not None:
+#         sub_qq = d_qq[(d_qq[:, 0] >= theta_min) & (d_qq[:, 0] <= theta_max) & (d_qq[:, 2] > 0)]
+#         log_n = np.log1p(sub_qq[:, 2])
+#         qq = scipy_stats.probplot(log_n, dist="norm")
+#         ax.scatter(qq[0][0], qq[0][1], s=6, alpha=0.5, color="#2196F3", label="log(1+N)")
+#         ax.plot(qq[0][0], qq[1][0] * qq[0][0] + qq[1][1],
+#                 color="red", lw=1.5, label="Нормаль")
+#     style_ax(ax,
+#              title=f"Q-Q plot: log(1+N)\ndet4 / {npl_main} / {binning_main}",
+#              xlabel="Теор. квантили", ylabel="Выб. квантили")
+#     ax.legend(fontsize=LEGEND_FS)
+#
+#     # ── (2,0–1) Boxplot по детекторам ────────────────────────────────────────
+#     ax = fig.add_subplot(gs[2, 0:2])
+#     box_data, box_labels = [], []
+#     for det in GOOD_DETS:
+#         d = load_tracks(npl_main, binning_main, det)
+#         sub = (d[(d[:, 0] >= theta_min) & (d[:, 0] <= theta_max) & (d[:, 2] > 0)]
+#                if d is not None else None)
+#         box_data.append(np.log1p(sub[:, 2]).tolist() if sub is not None and len(sub) else [0])
+#         box_labels.append(f"#{det}")
+#
+#     bp = ax.boxplot(
+#         box_data, tick_labels=box_labels, patch_artist=True,
+#         flierprops=dict(marker="o", markersize=3, alpha=0.5, markerfacecolor="red"),
+#         medianprops=dict(color="red", linewidth=1.5),
+#     )
+#     for patch in bp["boxes"]:
+#         patch.set_facecolor("#BBDEFB")
+#         patch.set_alpha(0.8)
+#     style_ax(ax,
+#              title=f"Boxplot N_tracks по детекторам  ({npl_main}/{binning_main}, "
+#                    f"{theta_min:.0f}°≤θ≤{theta_max:.0f}°)\n"
+#                    f"Красные точки = IQR-выбросы внутри детектора",
+#              xlabel="Детектор", ylabel="log(1 + N_tracks)")
+#     ax.tick_params(axis='x', labelsize=TICK_FS)
+#
+#     # ── (2,2) Сводная таблица ────────────────────────────────────────────────
+#     ax = fig.add_subplot(gs[2, 2])
+#     ax.axis("off")
+#     table_rows = [
+#         ["NaN / Inf",          "Отсутствуют",                  "✓"],
+#         ["Структ. пропуски",   "Все файлы полные",             "✓"],
+#         ["Угловое покрытие",   "θ/φ одинаковы\nу всех дет.",  "✓"],
+#         [f"θ < {theta_min:.0f}°",
+#                                "Геом. граница\n(не пропуски)", "⚠ Исключить"],
+#         ["Нулевые бины",       "94–99% = 0\nнорма для эмульсий","✓"],
+#         ["Выбросы IQR",        "det12,14,17\n1–4 бина",        "⚠"],
+#         ["Выбросы z>4σ",       "det12 z=5.98\ndet17 z=4.64",  "⚠"],
+#         ["Кросс-дет.",         "Нет >5× аномалий",             "✓"],
+#         ["log(1+N)",           "≈ нормальное\n(Q-Q)",          "✓"],
+#     ]
+#     tbl = ax.table(
+#         cellText=[r[1:] for r in table_rows],
+#         colLabels=["Детали", "Статус"],
+#         rowLabels=[r[0] for r in table_rows],
+#         cellLoc="left", loc="center", bbox=[0, 0, 1, 1],
+#     )
+#     tbl.auto_set_font_size(False)
+#     tbl.set_fontsize(8)
+#     for (r, c), cell in tbl.get_celld().items():
+#         if r == 0 or c == -1:
+#             cell.set_facecolor("#37474F")
+#             cell.set_text_props(color="white", fontweight="bold")
+#         elif "✓" in str(cell.get_text().get_text()):
+#             cell.set_facecolor("#E8F5E9")
+#         elif "⚠" in str(cell.get_text().get_text()):
+#             cell.set_facecolor("#FFF9C4")
+#     ax.set_title("Итоговая сводка", fontsize=TITLE_FS,
+#                  fontweight="bold", pad=6)
+#
+#     if save:
+#         out = OUTPUT_DIR / "fig_anomaly_analysis.png"
+#         fig.savefig(out, dpi=150, bbox_inches="tight")
+#         print(f"  Сохранён: {out}")
+#     return fig
 
-    TITLE_FS  = 9    # заголовки панелей
-    LABEL_FS  = 8    # подписи осей
-    TICK_FS   = 7    # метки делений
-    LEGEND_FS = 8    # легенды
+# ─────────────────────────────────────────────────────────────────────────────
+# ОТДЕЛЬНЫЕ ФУНКЦИИ ДЛЯ ПАНЕЛЕЙ
+# ─────────────────────────────────────────────────────────────────────────────
 
-    def style_ax(ax, title="", xlabel="", ylabel=""):
-        ax.set_title(title, fontsize=TITLE_FS, fontweight="bold", pad=4)
-        ax.set_xlabel(xlabel, fontsize=LABEL_FS, labelpad=2)
-        ax.set_ylabel(ylabel, fontsize=LABEL_FS, labelpad=2)
-        ax.tick_params(labelsize=TICK_FS)
+def plot_anomaly_heatmap_npl4(binning: str = "2.0Grad",
+                              theta_min: float = 58.0, theta_max: float = 90.0,
+                              save: bool = True):
+    """fig1 — Тепловая карта npl4"""
+    fig, ax = plt.subplots(figsize=(9.5, 7.5))
 
-    # ── (0,0–1) Тепловые карты ──────────────────────────────────────────────
-    for col, npl in enumerate(["npl4", "npl6"]):
-        ax = fig.add_subplot(gs[0, col])
-        acc = sum_all_detectors(npl, binning_main)
-        if acc is None:
-            ax.set_title(f"{npl} — нет данных")
-            continue
+    acc = sum_all_detectors("npl4", binning)
+    if acc is None:
+        ax.set_title("npl4 — нет данных")
+        if save:
+            fig.savefig(OUTPUT_DIR / f"fig1_heatmap_npl4_{binning}.png", dpi=200, bbox_inches="tight")
+        return fig
 
-        sub = acc[(acc[:, 0] >= theta_min) & (acc[:, 0] <= theta_max)]
-        t_b = np.unique(sub[:, 0])
-        p_b = np.unique(sub[:, 1])
-        grid = np.zeros((len(t_b), len(p_b)))
-        ti = {v: i for i, v in enumerate(t_b)}
-        pi = {v: i for i, v in enumerate(p_b)}
-        for row in sub:
-            if row[0] in ti and row[1] in pi:
-                grid[ti[row[0]], pi[row[1]]] = row[2]
+    sub = acc[(acc[:, 0] >= theta_min) & (acc[:, 0] <= theta_max)]
+    t_b = np.unique(sub[:, 0])
+    p_b = np.unique(sub[:, 1])
 
-        ax.pcolormesh(p_b, t_b, np.where(grid == 0, 1, np.nan),
-                      cmap="Greys", alpha=0.4, shading="auto", vmin=0, vmax=1)
-        masked = np.ma.masked_equal(grid, 0)
-        im = ax.pcolormesh(p_b, t_b, masked, cmap="hot", shading="auto")
-        cb = plt.colorbar(im, ax=ax, label="Треки", shrink=0.85)
-        cb.ax.tick_params(labelsize=TICK_FS)
-        cb.set_label("Треки", fontsize=LABEL_FS)
+    grid = np.zeros((len(t_b), len(p_b)))
+    ti = {v: i for i, v in enumerate(t_b)}
+    pi = {v: i for i, v in enumerate(p_b)}
+    for row in sub:
+        if row[0] in ti and row[1] in pi:
+            grid[ti[row[0]], pi[row[1]]] = row[2]
 
-        zero_pct = (grid == 0).sum() / grid.size * 100
-        style_ax(ax,
-                 title=f"{npl}/{binning_main} — {zero_pct:.1f}% нулевых бинов (серые)",
-                 xlabel="φ (°)", ylabel="θ (°)")
+    ax.pcolormesh(p_b, t_b, np.where(grid == 0, 1, np.nan),
+                  cmap="Greys", alpha=0.45, shading="auto")
+    masked = np.ma.masked_equal(grid, 0)
+    im = ax.pcolormesh(p_b, t_b, masked, cmap="hot", shading="auto")
 
-    # ── (0,2) Ненулевых бинов по детекторам ─────────────────────────────────
-    ax = fig.add_subplot(gs[0, 2])
+    cb = plt.colorbar(im, ax=ax, shrink=0.8)
+    cb.set_label("Количество треков", fontsize=10)
+
+    zero_pct = (grid == 0).sum() / grid.size * 100
+    ax.set_title(f"fig1 — npl4/{binning} — {zero_pct:.1f}% нулевых бинов",
+                 fontsize=11, fontweight="bold")
+    ax.set_xlabel("φ (°)", fontsize=10)
+    ax.set_ylabel("θ (°)", fontsize=10)
+    ax.tick_params(labelsize=9)
+
+    if save:
+        fig.savefig(OUTPUT_DIR / f"fig1_heatmap_npl4_{binning}.png", dpi=200, bbox_inches="tight")
+        print("  → fig1_heatmap_npl4.png")
+    plt.close(fig) if not save else None
+    return fig
+
+
+def plot_anomaly_heatmap_npl6(binning: str = "2.0Grad",
+                              theta_min: float = 58.0, theta_max: float = 90.0,
+                              save: bool = True):
+    """fig2 — Тепловая карта npl6"""
+    fig, ax = plt.subplots(figsize=(9.5, 7.5))
+
+    acc = sum_all_detectors("npl6", binning)
+    if acc is None:
+        ax.set_title("npl6 — нет данных")
+        if save:
+            fig.savefig(OUTPUT_DIR / f"fig2_heatmap_npl6_{binning}.png", dpi=200, bbox_inches="tight")
+        return fig
+
+    sub = acc[(acc[:, 0] >= theta_min) & (acc[:, 0] <= theta_max)]
+    t_b = np.unique(sub[:, 0])
+    p_b = np.unique(sub[:, 1])
+
+    grid = np.zeros((len(t_b), len(p_b)))
+    ti = {v: i for i, v in enumerate(t_b)}
+    pi = {v: i for i, v in enumerate(p_b)}
+    for row in sub:
+        if row[0] in ti and row[1] in pi:
+            grid[ti[row[0]], pi[row[1]]] = row[2]
+
+    ax.pcolormesh(p_b, t_b, np.where(grid == 0, 1, np.nan),
+                  cmap="Greys", alpha=0.45, shading="auto")
+    masked = np.ma.masked_equal(grid, 0)
+    im = ax.pcolormesh(p_b, t_b, masked, cmap="hot", shading="auto")
+
+    cb = plt.colorbar(im, ax=ax, shrink=0.8)
+    cb.set_label("Количество треков", fontsize=10)
+
+    zero_pct = (grid == 0).sum() / grid.size * 100
+    ax.set_title(f"fig2 — npl6/{binning} — {zero_pct:.1f}% нулевых бинов",
+                 fontsize=11, fontweight="bold")
+    ax.set_xlabel("φ (°)", fontsize=10)
+    ax.set_ylabel("θ (°)", fontsize=10)
+    ax.tick_params(labelsize=9)
+
+    if save:
+        fig.savefig(OUTPUT_DIR / f"fig2_heatmap_npl6_{binning}.png", dpi=200, bbox_inches="tight")
+        print("  → fig2_heatmap_npl6.png")
+    plt.close(fig) if not save else None
+    return fig
+
+
+def plot_anomaly_nonzero_bins(binning: str = "2.0Grad",
+                              theta_min: float = 58.0, theta_max: float = 90.0,
+                              save: bool = True):
+    """fig3 — Ненулевые бины по детекторам"""
+    fig, ax = plt.subplots(figsize=(10.5, 6.5))
+
     for npl, col, marker in [("npl4", "#2196F3", "o"), ("npl6", "#4CAF50", "s")]:
         vals = []
         for det in GOOD_DETS:
-            d = load_tracks(npl, binning_main, det)
+            d = load_tracks(npl, binning, det)
             if d is None:
                 vals.append(0)
                 continue
             sub = d[(d[:, 0] >= theta_min) & (d[:, 0] <= theta_max)]
             vals.append((sub[:, 2] > 0).sum())
+
         ax.plot(GOOD_DETS, vals, color=col, marker=marker, label=npl,
-                lw=1.5, markersize=5)
-        ax.axhline(np.mean(vals), color=col, ls="--", alpha=0.4)
-    style_ax(ax,
-             title="Заполненность бинов\nпо детекторам",
-             xlabel="Детектор",
-             ylabel=f"Ненул. бинов ({theta_min:.0f}–{theta_max:.0f}°)")
-    ax.legend(fontsize=LEGEND_FS)
-    ax.set_xticks(GOOD_DETS)
-    ax.tick_params(axis='x', labelsize=TICK_FS - 1, rotation=45)
+                lw=1.8, markersize=6)
+        ax.axhline(np.mean(vals), color=col, ls="--", alpha=0.5)
 
-    # ── (1,0) Суммарные треки по детекторам ──────────────────────────────────
-    ax = fig.add_subplot(gs[1, 0])
-    w = 0.4
+    ax.set_title("fig3 — Ненулевых бинов по детекторам", fontsize=11, fontweight="bold")
+    ax.set_xlabel("Детектор", fontsize=10)
+    ax.set_ylabel(f"Количество ненулевых бинов\n({theta_min:.0f}–{theta_max:.0f}°)", fontsize=10)
+    ax.legend(fontsize=10)
+    ax.set_xticks(GOOD_DETS)
+    ax.tick_params(axis='x', rotation=45, labelsize=9)
+
+    if save:
+        fig.savefig(OUTPUT_DIR / f"fig3_nonzero_bins_{binning}.png", dpi=200, bbox_inches="tight")
+        print("  → fig3_nonzero_bins.png")
+    plt.close(fig) if not save else None
+    return fig
+
+
+def plot_anomaly_total_tracks(binning: str = "2.0Grad",
+                              theta_min: float = 58.0, theta_max: float = 90.0,
+                              save: bool = True):
+    """fig4 — Суммарные треки по детекторам"""
+    fig, ax = plt.subplots(figsize=(10.5, 6.5))
+    w = 0.38
+
     for k, (npl, col) in enumerate([("npl4", "#2196F3"), ("npl6", "#4CAF50")]):
-        vals, colors_bar = [], []
+        vals = []
         for det in GOOD_DETS:
-            d = load_tracks(npl, binning_main, det)
-            vals.append(0 if d is None else
-                        d[(d[:, 0] >= theta_min) & (d[:, 0] <= theta_max), 2].sum())
-            colors_bar.append(col)
-        xs = [d + (k - 0.5) * w for d in GOOD_DETS]
-        ax.bar(xs, [v / 1e3 for v in vals], width=w,
-               color=colors_bar, label=npl, alpha=0.85,
-               edgecolor="k", linewidth=0.4)
-    style_ax(ax,
-             title=f"Треков на детектор ({theta_min:.0f}–{theta_max:.0f}°)",
-             xlabel="Детектор", ylabel="Треков (тыс.)")
-    ax.set_xticks(GOOD_DETS)
-    ax.tick_params(axis='x', labelsize=TICK_FS - 1, rotation=45)
-    ax.legend(fontsize=LEGEND_FS)
+            d = load_tracks(npl, binning, det)
+            val = 0 if d is None else d[(d[:, 0] >= theta_min) & (d[:, 0] <= theta_max), 2].sum()
+            vals.append(val)
 
-    # ── (1,1) Гистограмма N_tracks ───────────────────────────────────────────
-    ax = fig.add_subplot(gs[1, 1])
+        xs = [d + (k - 0.5) * w for d in GOOD_DETS]
+        ax.bar(xs, [v / 1000 for v in vals], width=w, color=col, label=npl,
+               alpha=0.85, edgecolor="k", linewidth=0.5)
+
+    ax.set_title("fig4 — Суммарное количество треков по детекторам", fontsize=11, fontweight="bold")
+    ax.set_xlabel("Детектор", fontsize=10)
+    ax.set_ylabel("Треков (тыс.)", fontsize=10)
+    ax.set_xticks(GOOD_DETS)
+    ax.tick_params(axis='x', rotation=45, labelsize=9)
+    ax.legend(fontsize=10)
+
+    if save:
+        fig.savefig(OUTPUT_DIR / f"fig4_total_tracks_{binning}.png", dpi=200, bbox_inches="tight")
+        print("  → fig4_total_tracks.png")
+    plt.close(fig) if not save else None
+    return fig
+
+
+def plot_anomaly_histogram(binning: str = "2.0Grad",
+                           theta_min: float = 58.0, theta_max: float = 90.0,
+                           save: bool = True):
+    """fig5 — Гистограмма распределения N_tracks"""
+    fig, ax = plt.subplots(figsize=(9.5, 6.5))
+
     for npl, col, ls in [("npl4", "#2196F3", "-"), ("npl6", "#4CAF50", "--")]:
         all_n = []
         for det in GOOD_DETS:
-            d = load_tracks(npl, binning_main, det)
-            if d is None:
-                continue
+            d = load_tracks(npl, binning, det)
+            if d is None: continue
             sub = d[(d[:, 0] >= theta_min) & (d[:, 0] <= theta_max) & (d[:, 2] > 0)]
-            all_n.extend(sub[:, 2].tolist())
+            all_n.extend(sub[:, 2])
+
         all_n = np.array(all_n)
         ax.hist(all_n, bins=60, color=col, alpha=0.45, label=npl,
-                density=True, edgecolor=col, linewidth=0.3, ls=ls)
-        q1, q3 = np.percentile(all_n, 25), np.percentile(all_n, 75)
-        thr = q3 + IQR_K * (q3 - q1)
-        ax.axvline(thr, color=col, ls=":", lw=1.5,
-                   label=f"{npl} порог≈{thr:.0f}")
-    style_ax(ax,
-             title=f"Распределение N_tracks\n(ненул. бины, {theta_min:.0f}–{theta_max:.0f}°)",
-             xlabel="N_tracks в бине", ylabel="Плотность")
-    ax.legend(fontsize=LEGEND_FS)
+                density=True, edgecolor=col, linewidth=0.4, ls=ls)
+
+        q1, q3 = np.percentile(all_n, [25, 75])
+        thr = q3 + 1.5 * (q3 - q1)
+        ax.axvline(thr, color=col, ls=":", lw=1.8, label=f"{npl} порог ≈ {thr:.0f}")
+
+    ax.set_title("fig5 — Распределение N_tracks (ненулевые бины)", fontsize=11, fontweight="bold")
+    ax.set_xlabel("N_tracks в бине", fontsize=10)
+    ax.set_ylabel("Плотность", fontsize=10)
     ax.set_yscale("log")
+    ax.legend(fontsize=10)
 
-    # ── (1,2) Q-Q plot ────────────────────────────────────────────────────────
-    ax = fig.add_subplot(gs[1, 2])
-    d_qq = load_tracks(npl_main, binning_main, 4)
+    if save:
+        fig.savefig(OUTPUT_DIR / f"fig5_histogram_{binning}.png", dpi=200, bbox_inches="tight")
+        print("  → fig5_histogram.png")
+    plt.close(fig) if not save else None
+    return fig
+
+
+def plot_anomaly_qq(binning: str = "2.0Grad", npl_main: str = "npl4",
+                    theta_min: float = 58.0, theta_max: float = 90.0,
+                    save: bool = True):
+    """fig6 — Q-Q plot"""
+    fig, ax = plt.subplots(figsize=(8.5, 7.5))
+
+    d_qq = load_tracks(npl_main, binning, 4)
     if d_qq is not None:
-        sub_qq = d_qq[(d_qq[:, 0] >= theta_min) & (d_qq[:, 0] <= theta_max) & (d_qq[:, 2] > 0)]
-        log_n = np.log1p(sub_qq[:, 2])
+        sub = d_qq[(d_qq[:, 0] >= theta_min) & (d_qq[:, 0] <= theta_max) & (d_qq[:, 2] > 0)]
+        log_n = np.log1p(sub[:, 2])
         qq = scipy_stats.probplot(log_n, dist="norm")
-        ax.scatter(qq[0][0], qq[0][1], s=6, alpha=0.5, color="#2196F3", label="log(1+N)")
+        ax.scatter(qq[0][0], qq[0][1], s=8, alpha=0.6, color="#2196F3", label="log(1+N)")
         ax.plot(qq[0][0], qq[1][0] * qq[0][0] + qq[1][1],
-                color="red", lw=1.5, label="Нормаль")
-    style_ax(ax,
-             title=f"Q-Q plot: log(1+N)\ndet4 / {npl_main} / {binning_main}",
-             xlabel="Теор. квантили", ylabel="Выб. квантили")
-    ax.legend(fontsize=LEGEND_FS)
+                color="red", lw=2, label="Нормаль")
 
-    # ── (2,0–1) Boxplot по детекторам ────────────────────────────────────────
-    ax = fig.add_subplot(gs[2, 0:2])
-    box_data, box_labels = [], []
+    ax.set_title(f"fig6 — Q-Q plot log(1+N) — {npl_main}/{binning}", fontsize=11, fontweight="bold")
+    ax.set_xlabel("Теоретические квантили", fontsize=10)
+    ax.set_ylabel("Выборочные квантили", fontsize=10)
+    ax.legend(fontsize=10)
+
+    if save:
+        fig.savefig(OUTPUT_DIR / f"fig6_qqplot_{binning}.png", dpi=200, bbox_inches="tight")
+        print("  → fig6_qqplot.png")
+    plt.close(fig) if not save else None
+    return fig
+
+
+def plot_anomaly_boxplot(binning: str = "2.0Grad", npl_main: str = "npl4",
+                         theta_min: float = 58.0, theta_max: float = 90.0,
+                         save: bool = True):
+    """fig7 — Boxplot по детекторам"""
+    fig, ax = plt.subplots(figsize=(12.5, 6.5))
+
+    box_data, labels = [], []
     for det in GOOD_DETS:
-        d = load_tracks(npl_main, binning_main, det)
-        sub = (d[(d[:, 0] >= theta_min) & (d[:, 0] <= theta_max) & (d[:, 2] > 0)]
-               if d is not None else None)
-        box_data.append(np.log1p(sub[:, 2]).tolist() if sub is not None and len(sub) else [0])
-        box_labels.append(f"#{det}")
+        d = load_tracks(npl_main, binning, det)
+        if d is None:
+            box_data.append([0])
+        else:
+            sub = d[(d[:, 0] >= theta_min) & (d[:, 0] <= theta_max) & (d[:, 2] > 0)]
+            box_data.append(np.log1p(sub[:, 2]).tolist() if len(sub) > 0 else [0])
+        labels.append(f"#{det}")
 
-    bp = ax.boxplot(
-        box_data, tick_labels=box_labels, patch_artist=True,
-        flierprops=dict(marker="o", markersize=3, alpha=0.5, markerfacecolor="red"),
-        medianprops=dict(color="red", linewidth=1.5),
-    )
+    bp = ax.boxplot(box_data, tick_labels=labels, patch_artist=True,
+                    flierprops=dict(marker="o", markersize=4, alpha=0.6, markerfacecolor="red"))
+
     for patch in bp["boxes"]:
         patch.set_facecolor("#BBDEFB")
         patch.set_alpha(0.8)
-    style_ax(ax,
-             title=f"Boxplot N_tracks по детекторам  ({npl_main}/{binning_main}, "
-                   f"{theta_min:.0f}°≤θ≤{theta_max:.0f}°)\n"
-                   f"Красные точки = IQR-выбросы внутри детектора",
-             xlabel="Детектор", ylabel="log(1 + N_tracks)")
-    ax.tick_params(axis='x', labelsize=TICK_FS)
 
-    # ── (2,2) Сводная таблица ────────────────────────────────────────────────
-    ax = fig.add_subplot(gs[2, 2])
+    ax.set_title(f"fig7 — Boxplot log(1 + N_tracks) — {npl_main}/{binning}",
+                 fontsize=11, fontweight="bold")
+    ax.set_xlabel("Детектор", fontsize=10)
+    ax.set_ylabel("log(1 + N_tracks)", fontsize=10)
+    ax.tick_params(axis='x', rotation=45, labelsize=9)
+
+    if save:
+        fig.savefig(OUTPUT_DIR / f"fig7_boxplot_{binning}.png", dpi=200, bbox_inches="tight")
+        print("  → fig7_boxplot.png")
+    plt.close(fig) if not save else None
+    return fig
+
+
+def plot_anomaly_summary(save: bool = True):
+    """fig8 — Сводная таблица"""
+    fig, ax = plt.subplots(figsize=(9, 7))
     ax.axis("off")
+
     table_rows = [
         ["NaN / Inf",          "Отсутствуют",                  "✓"],
         ["Структ. пропуски",   "Все файлы полные",             "✓"],
-        ["Угловое покрытие",   "θ/φ одинаковы\nу всех дет.",  "✓"],
-        [f"θ < {theta_min:.0f}°",
-                               "Геом. граница\n(не пропуски)", "⚠ Исключить"],
-        ["Нулевые бины",       "94–99% = 0\nнорма для эмульсий","✓"],
-        ["Выбросы IQR",        "det12,14,17\n1–4 бина",        "⚠"],
-        ["Выбросы z>4σ",       "det12 z=5.98\ndet17 z=4.64",  "⚠"],
-        ["Кросс-дет.",         "Нет >5× аномалий",             "✓"],
-        ["log(1+N)",           "≈ нормальное\n(Q-Q)",          "✓"],
+        ["Угловое покрытие",   "θ/φ одинаковы у всех дет.",   "✓"],
+        ["θ < 58°",            "Геометрическая граница",      "⚠"],
+        ["Нулевые бины",       "94–99% = 0 — норма",          "✓"],
+        ["IQR-выбросы",        "det12,14,17 (1–4 бина)",      "⚠"],
+        ["Кросс-детектор",     "Нет сильных аномалий",        "✓"],
+        ["log(1+N)",           "≈ нормальное распределение",  "✓"],
     ]
+
     tbl = ax.table(
         cellText=[r[1:] for r in table_rows],
         colLabels=["Детали", "Статус"],
         rowLabels=[r[0] for r in table_rows],
-        cellLoc="left", loc="center", bbox=[0, 0, 1, 1],
+        cellLoc="left", loc="center", bbox=[0, 0, 1, 1]
     )
     tbl.auto_set_font_size(False)
-    tbl.set_fontsize(8)
+    tbl.set_fontsize(9)
+
     for (r, c), cell in tbl.get_celld().items():
         if r == 0 or c == -1:
-            cell.set_facecolor("#37474F")
-            cell.set_text_props(color="white", fontweight="bold")
+            cell.set_facecolor("#263238")
+            cell.set_text_props(color="white", weight="bold")
         elif "✓" in str(cell.get_text().get_text()):
             cell.set_facecolor("#E8F5E9")
         elif "⚠" in str(cell.get_text().get_text()):
             cell.set_facecolor("#FFF9C4")
-    ax.set_title("Итоговая сводка", fontsize=TITLE_FS,
-                 fontweight="bold", pad=6)
+
+    ax.set_title("fig8 — Итоговая сводка анализа", fontsize=12, fontweight="bold", pad=12)
 
     if save:
-        out = OUTPUT_DIR / "fig_anomaly_analysis.png"
-        fig.savefig(out, dpi=150, bbox_inches="tight")
-        print(f"  Сохранён: {out}")
+        fig.savefig(OUTPUT_DIR / "fig8_summary.png", dpi=180, bbox_inches="tight")
+        print("  → fig8_summary.png")
+    plt.close(fig) if not save else None
     return fig
-
 
 # ─────────────────────────────────────────────────────────────────────────────
 # ГЛАВНАЯ ФУНКЦИЯ
@@ -596,11 +899,16 @@ def main():
         cross_detector_check(npl, binning, theta_min, theta_max, verbose=True)
 
     # ── 6. Визуализация ──────────────────────────────────────────────────────
-    print("\n─── 6. Генерация графика " + "─" * 36)
-    plot_anomaly_analysis(
-        npl_main="npl4", binning_main="2.0Grad",
-        theta_min=theta_min, theta_max=theta_max,
-    )
+    print("\n─── 6. Генерация графиков " + "─" * 32)
+
+    plot_anomaly_heatmap_npl4(theta_min=theta_min, theta_max=theta_max)
+    plot_anomaly_heatmap_npl6(theta_min=theta_min, theta_max=theta_max)
+    plot_anomaly_nonzero_bins(theta_min=theta_min, theta_max=theta_max)
+    plot_anomaly_total_tracks(theta_min=theta_min, theta_max=theta_max)
+    plot_anomaly_histogram(theta_min=theta_min, theta_max=theta_max)
+    plot_anomaly_qq(theta_min=theta_min, theta_max=theta_max)
+    plot_anomaly_boxplot(theta_min=theta_min, theta_max=theta_max)
+    plot_anomaly_summary()
 
     print("\n✓ Анализ завершён!")
     plt.show()
