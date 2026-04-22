@@ -20,16 +20,14 @@
 
 import numpy as np
 import matplotlib.pyplot as plt
-import matplotlib.gridspec as gridspec
 from scipy import stats as scipy_stats
-from pathlib import Path
 
 # Все пути, константы и функции загрузки -- в config.py
 from config import (
-    DATA_ROOT, OUTPUT_DIR, VALID_BINNINGS, EXPECTED_ROWS,
-    GOOD_DETS, BAD_DETS, THETA_MIN, THETA_MAX,
+    DATA_ROOT, OUTPUT_DIR, EXPECTED_ROWS,
+    GOOD_DETS, BAD_DETS,
     IQR_K, ZSCORE_TH, CROSS_TH, COLORS_NPL,
-    load_tracks, sum_all_detectors, check_data_integrity,
+    load_tracks, sum_all_detectors,
 )
 
 # Папка для сохранения графиков
@@ -156,7 +154,7 @@ def detect_outliers_iqr(data: np.ndarray, k: float = IQR_K) -> np.ndarray:
     if len(nonzero) < 4:
         return np.zeros(len(data), dtype=bool)
     q1, q3 = np.percentile(nonzero, 25), np.percentile(nonzero, 75)
-    threshold = q3 + k * (q3 - q1)
+    threshold: float = q3 + k * (q3 - q1)       # type: ignore
     return (n > threshold) & (n > 0)
 
 
@@ -266,8 +264,8 @@ def cross_detector_check(npl: str, binning: str,
             continue
 
         for det, v in dvals.items():
-            if v > 0 and v > threshold * med:
-                anomalies.append((theta, phi, det, v, med, v / med))
+            if v > 0 and v > threshold * med:                               # type: ignore
+                anomalies.append((theta, phi, det, v, med, v / med))        # type: ignore
 
     anomalies.sort(key=lambda x: -x[5])
 
@@ -396,7 +394,7 @@ def plot_anomaly_nonzero_bins(binning: str = "2.0Grad",
 
         ax.plot(GOOD_DETS, vals, color=col, marker=marker, label=npl,
                 lw=1.8, markersize=6)
-        ax.axhline(np.mean(vals), color=col, ls="--", alpha=0.5)
+        ax.axhline(np.mean(vals), color=col, ls="--", alpha=0.5)            # type: ignore
 
     ax.set_title("fig3 -- Ненулевых бинов по детекторам", fontsize=11, fontweight="bold")
     ax.set_xlabel("Детектор", fontsize=10)
@@ -563,7 +561,7 @@ def plot_anomaly_summary(save: bool = True):
         colLabels=["Детали", "Статус"],
         rowLabels=[r[0] for r in table_rows],
         cellLoc="left", loc="center", bbox=[0, 0, 1, 1]
-    )
+    )                                                           # type: ignore
     tbl.auto_set_font_size(False)
     tbl.set_fontsize(9)
 
