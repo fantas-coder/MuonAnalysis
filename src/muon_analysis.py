@@ -24,12 +24,10 @@ import matplotlib.pyplot as plt
 import matplotlib.gridspec as gridspec
 import matplotlib.table
 from matplotlib.transforms import Bbox
-from pathlib import Path
 
 # Все пути, константы и функции загрузки -- в config.py
 from config import (
-    DATA_ROOT, OUTPUT_DIR, VALID_BINNINGS, COLORS_NPL,
-    GOOD_DETS, THETA_MIN, THETA_MAX,
+    DATA_ROOT, OUTPUT_DIR, VALID_BINNINGS, COLORS_NPL, THETA_MIN, THETA_MAX,
     data_path, load_detectors, load_input, load_efficiency,
     load_tracks, sum_all_detectors, make_grid,
     theta_marginal, phi_marginal, check_data_integrity,
@@ -147,7 +145,7 @@ def plot_efficiency(binning: str = "1.0Grad", theta_max: float = 70.0, save: boo
 # РИСУНОК 3: Тепловые карты (θ, φ)
 # ─────────────────────────────────────────────────────────────────────────────
 
-def plot_heatmaps(binning: str = "2.0Grad", theta_max: float = 80.0, save: bool = True):
+def plot_heatmaps(binning: str = "2.0Grad", theta_max: float = 90.0, save: bool = True):
     """
     Тепловые карты угловых распределений суммарно по всем детекторам.
     Сравнение npl4/5/6 при заданном биннинге.
@@ -164,7 +162,7 @@ def plot_heatmaps(binning: str = "2.0Grad", theta_max: float = 80.0, save: bool 
         if data is None:
             ax.set_title(f"{npl} -- нет данных"); continue
 
-        p_bins, t_bins, grid = make_grid(data, theta_max)
+        p_bins, t_bins, grid = make_grid(data)
         im = ax.pcolormesh(p_bins, t_bins, grid, cmap="inferno", shading="auto")
         plt.colorbar(im, ax=ax, label="Треки (с поправкой)")
         ax.set_xlabel("φ (°)"); ax.set_ylabel("θ (°)")
@@ -202,11 +200,11 @@ def plot_npl_comparison(binning: str = "2.0Grad", save: bool = True):
             totals.append(0); continue
 
         # θ-маргинальное
-        t_b, t_cnt = theta_marginal(data, 90.0)
+        t_b, t_cnt = theta_marginal(data)
         axes[0].plot(t_b, t_cnt, color=COLORS_NPL[npl], label=npl, lw=2)
 
         # φ-маргинальное
-        p_b, p_cnt = phi_marginal(data, 60.0)
+        p_b, p_cnt = phi_marginal(data)
         axes[1].plot(p_b, p_cnt, color=COLORS_NPL[npl], label=npl, lw=1.8, alpha=0.85)
 
         totals.append(data[:, 2].sum())
@@ -244,7 +242,7 @@ def plot_npl_comparison(binning: str = "2.0Grad", save: bool = True):
 # РИСУНОК 5: Влияние биннинга
 # ─────────────────────────────────────────────────────────────────────────────
 
-def plot_binning_comparison(npl: str = "npl5", theta_max: float = 60.0, save: bool = True):
+def plot_binning_comparison(npl: str = "npl5", theta_max: float = 90.0, save: bool = True):
     """
     Тепловые карты для 4 биннингов при фиксированном npl.
     Показывает трейдоф: угловое разрешение vs заполненность бинов.
@@ -259,7 +257,7 @@ def plot_binning_comparison(npl: str = "npl5", theta_max: float = 60.0, save: bo
         if data is None:
             ax.set_title(f"{b} -- нет данных"); continue
 
-        p_bins, t_bins, grid = make_grid(data, theta_max)
+        p_bins, t_bins, grid = make_grid(data)
         nonzero_frac = (grid > 0).sum() / grid.size * 100
         mean_tracks  = grid[grid > 0].mean() if (grid > 0).any() else 0
 
@@ -360,11 +358,11 @@ def plot_overview(binning: str = "2.0Grad", save: bool = True):
         data = all_data[npl]
         if data is None:
             ax.set_title(f"{npl} -- нет данных"); continue
-        p_b, t_b, grid = make_grid(data, 80.0)
+        p_b, t_b, grid = make_grid(data)
         im = ax.pcolormesh(p_b, t_b, grid, cmap="hot", shading="auto")
         plt.colorbar(im, ax=ax, label="Треки", shrink=0.8)
         ax.set_xlabel("φ (°)"); ax.set_ylabel("θ (°)")
-        total = data[(data[:, 0] > 0) & (data[:, 0] <= 80), 2].sum()
+        total = data[(data[:, 0] > THETA_MIN) & (data[:, 0] <= THETA_MAX), 2].sum()
         ax.set_title(f"{npl} | Σ = {total:,.0f}", fontweight="bold")
 
     # ── Строка 1: θ-распределение, φ-распределение, поправки ───────────────
@@ -377,10 +375,10 @@ def plot_overview(binning: str = "2.0Grad", save: bool = True):
         if data is None: continue
         col = COLORS_NPL[npl]
 
-        t_b, t_cnt = theta_marginal(data, 90.0)
+        t_b, t_cnt = theta_marginal(data)
         ax10.plot(t_b, t_cnt, color=col, label=npl, lw=2)
 
-        p_b, p_cnt = phi_marginal(data, 60.0)
+        p_b, p_cnt = phi_marginal(data)
         ax11.plot(p_b, p_cnt, color=col, label=npl, lw=1.8, alpha=0.85)
 
         eff_path = data_path(npl, binning, "EffCorFile_Tracks.dat")
@@ -407,7 +405,7 @@ def plot_overview(binning: str = "2.0Grad", save: bool = True):
     for b, col in bin_colors.items():
         data = sum_all_detectors("npl5", b)
         if data is None: continue
-        t_b, t_cnt = theta_marginal(data, 90.0)
+        t_b, t_cnt = theta_marginal(data)
         ax20.plot(t_b, t_cnt, color=col, label=f"Δ = {b.replace('Grad','°')}", lw=2)
     ax20.set_xlabel("θ (°)"); ax20.set_ylabel("Треков")
     ax20.set_title("Влияние биннинга (npl5, θ-распределение)", fontweight="bold")

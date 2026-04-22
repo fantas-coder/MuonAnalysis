@@ -64,6 +64,8 @@ CROSS_TH  = 5.0   # кросс-детекторный порог: отклоне
 # ─────────────────────────────────────────────────────────────────────────────
 
 # Применять ли поправку на эффективность из EffCorFile_Tracks.dat.
+# N_corr = ε × N_raw,  где ε = N_ожид / N_зарег ≥ 1 при больших θ_D
+# (детектор недосчитывает треки при наклонном прохождении через пластины)
 # True  — применять (по умолчанию, данные не скорректированы).
 # False — пропустить (если поправка уже применена при сборке Tracks_DistrOutput).
 APPLY_EFF_CORRECTION: bool = True
@@ -285,43 +287,6 @@ def phi_marginal(
     p_bins = np.unique(sub[:, 1])
     counts = np.array([sub[sub[:, 1] == p, 2].sum() for p in p_bins])
     return p_bins, counts
-
-
-def apply_efficiency_correction(
-    tracks: np.ndarray,
-    eff: np.ndarray,
-    binning: str,
-) -> np.ndarray:
-    """
-    Применяет поправку на эффективность к таблице треков.
-
-    tracks  -- массив (θ, φ, N) в земных координатах
-    eff     -- массив из EffCorFile_Tracks.dat
-    binning -- строка вида '2.0Grad' (нужна для определения шага)
-
-    Возвращает копию массива с исправленными N_tracks.
-
-    Примечание: поправка надёжна только при θ_D ≤ 30°,
-    что соответствует θ_Земля ≥ 60°. За пределами этого диапазона
-    коэффициент либо > 2, либо равен 0 (нет калибровки).
-    """
-    step = float(binning.replace("Grad", ""))
-    corrected = tracks.copy()
-
-    # строим словарь {theta_D_bin_center -> correction}
-    eff_dict = {row[0]: row[3] for row in eff if row[3] > 0}
-
-    for i, row in enumerate(corrected):
-        theta_earth = row[0]
-        # приближённый перевод: theta_D ≈ 90 - theta_earth
-        theta_d = 90.0 - theta_earth
-        # ищем ближайший бин в EffCorFile
-        nearest = min(eff_dict.keys(), key=lambda x: abs(x - theta_d))
-        if abs(nearest - theta_d) <= step:
-            coeff = eff_dict[nearest]
-            if 0 < coeff <= 2.0:          # только надёжные поправки
-                corrected[i, 2] = row[2] / coeff
-    return corrected
 
 
 def check_data_integrity(verbose: bool = True) -> dict:
