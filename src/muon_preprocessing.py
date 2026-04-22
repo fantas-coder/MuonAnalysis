@@ -1,16 +1,16 @@
 """
 =============================================================
-  Мюонография — предобработка данных
+  Мюонография -- предобработка данных
 =============================================================
 
 Этапы пайплайна:
-  1. Фильтрация                 — рабочий θ-диапазон, исключение нулей
-  2. Поправка на эффективность  — коррекция по EffCorFile_Tracks.dat
+  1. Фильтрация                 -- рабочий θ-диапазон, исключение нулей
+  2. Поправка на эффективность  -- коррекция по EffCorFile_Tracks.dat
                                   (можно отключить если уже применена)
-  3. Нормализация               — три режима: per-detector / global / angular
-  4. Трансформация              — log(1+N) и/или винсоризация
-  5. Построение сетки           — 2D-массив (θ × φ) для подачи в модель
-  6. Сохранение                 — .npz файл, готовый к загрузке в ML
+  3. Нормализация               -- три режима: per-detector / global / angular
+  4. Трансформация              -- log(1+N) и/или винсоризация
+  5. Построение сетки           -- 2D-массив (θ * φ) для подачи в модель
+  6. Сохранение                 -- .npz файл, готовый к загрузке в ML
 
 Зависимости:
   pip install numpy matplotlib scipy
@@ -24,12 +24,11 @@ from dataclasses import dataclass, field
 from scipy import stats as scipy_stats
 
 from config import (
-    DATA_ROOT, OUTPUT_DIR, PREPROC_DIR,
+    OUTPUT_DIR, PREPROC_DIR,
     GOOD_DETS, THETA_MIN, THETA_MAX,
     APPLY_EFF_CORRECTION, ZERO_THRESHOLD, EFF_CORR_MAX,
     WINSORIZE_PERCENTILE, NORMALIZATION, TRANSFORM,
-    COLORS_NPL, load_tracks, load_efficiency, load_input,
-    sum_all_detectors,
+    load_tracks, load_efficiency,
 )
 
 # Папка для сохранения графиков
@@ -37,15 +36,15 @@ OUTPUT_DIR = OUTPUT_DIR / "muon_preprocessing"
 OUTPUT_DIR.mkdir(exist_ok=True)
 
 # ─────────────────────────────────────────────────────────────────────────────
-# ПАРАМЕТРЫ ПРЕДОБРАБОТКИ — заданы в config.py, здесь только справка:
+# ПАРАМЕТРЫ ПРЕДОБРАБОТКИ -- заданы в config.py, здесь только справка:
 #
-#   APPLY_EFF_CORRECTION  — применять поправку на эффективность (True/False)
-#   ZERO_THRESHOLD        — порог для маскировки пустых бинов (0.0)
-#   EFF_CORR_MAX          — макс. надёжная поправка (2.0 → исключает θ=58°)
-#   WINSORIZE_PERCENTILE  — верхний перцентиль обрезки выбросов (99.5 / None)
-#   NORMALIZATION         — режим нормализации (per_detector / global / angular / none)
-#   TRANSFORM             — трансформация значений (log1p / sqrt / none)
-#   PREPROC_DIR           — папка для сохранения .npz файлов
+#   APPLY_EFF_CORRECTION  -- применять поправку на эффективность (True/False)
+#   ZERO_THRESHOLD        -- порог для маскировки пустых бинов (0.0)
+#   EFF_CORR_MAX          -- макс. надёжная поправка (2.0 -> исключает θ=58°)
+#   WINSORIZE_PERCENTILE  -- верхний перцентиль обрезки выбросов (99.5 / None)
+#   NORMALIZATION         -- режим нормализации (per_detector / global / angular / none)
+#   TRANSFORM             -- трансформация значений (log1p / sqrt / none)
+#   PREPROC_DIR           -- папка для сохранения .npz файлов
 # ─────────────────────────────────────────────────────────────────────────────
 
 
@@ -56,19 +55,19 @@ OUTPUT_DIR.mkdir(exist_ok=True)
 @dataclass
 class DetectorSample:
     """
-    Один предобработанный детектор — готовая единица для ML.
+    Один предобработанный детектор -- готовая единица для ML.
 
     Атрибуты:
-        det      — номер детектора
-        npl      — уровень качества трека ("npl4", ...)
-        binning  — биннинг ("2.0Grad", ...)
-        theta    — массив θ-бинов (°), shape (T,)
-        phi      — массив φ-бинов (°), shape (P,)
-        grid_raw — сырые треки в рабочей зоне, shape (T, P)
-        grid_eff — после поправки на эффективность, shape (T, P)
-        grid_norm — после нормализации, shape (T, P)
-        grid     — финальный массив после всех шагов, shape (T, P)
-        meta     — словарь с метаданными (суммы, маски, параметры)
+        det      -- номер детектора
+        npl      -- уровень качества трека ("npl4", ...)
+        binning  -- биннинг ("2.0Grad", ...)
+        theta    -- массив θ-бинов (°), shape (T,)
+        phi      -- массив φ-бинов (°), shape (P,)
+        grid_raw -- сырые треки в рабочей зоне, shape (T, P)
+        grid_eff -- после поправки на эффективность, shape (T, P)
+        grid_norm -- после нормализации, shape (T, P)
+        grid     -- финальный массив после всех шагов, shape (T, P)
+        meta     -- словарь с метаданными (суммы, маски, параметры)
     """
     det:       int
     npl:       str
@@ -104,10 +103,10 @@ def filter_working_range(
     Выбирает рабочий угловой диапазон и строит 2D-сетку.
 
     Возвращает:
-        theta_bins — уникальные θ-значения, shape (T,)
-        phi_bins   — уникальные φ-значения, shape (P,)
-        grid       — N_tracks на сетке (T × P), нули сохранены
-        mask_zero  — булева маска нулевых ячеек, shape (T, P)
+        theta_bins -- уникальные θ-значения, shape (T,)
+        phi_bins   -- уникальные φ-значения, shape (P,)
+        grid       -- N_tracks на сетке (T * P), нули сохранены
+        mask_zero  -- булева маска нулевых ячеек, shape (T, P)
     """
     sub = data[(data[:, 0] >= theta_min) & (data[:, 0] <= theta_max)].copy()
 
@@ -149,8 +148,8 @@ def build_eff_correction_map(
     и маскируются (устанавливаются в 0 после коррекции).
 
     Возвращает:
-        corr_vec  — вектор коэффициентов поправки, shape (T,)
-        mask_bad  — булева маска ненадёжных θ-бинов, shape (T,)
+        corr_vec  -- вектор коэффициентов поправки, shape (T,)
+        mask_bad  -- булева маска ненадёжных θ-бинов, shape (T,)
     """
     # Строим словарь {theta_D_degrees -> correction_coeff}
     eff_valid = eff[eff[:, 3] > 0]  # только строки с ненулевой поправкой
@@ -168,7 +167,7 @@ def build_eff_correction_map(
 
         # Находим ближайший бин в EffCorFile (шаг 0.25°)
         nearest_key = min(eff_dict.keys(), key=lambda x: abs(x - theta_d))
-        if abs(nearest_key - theta_d) > 1.0:  # если ближайший далеко — не доверяем
+        if abs(nearest_key - theta_d) > 1.0:  # если ближайший далеко -- не доверяем
             mask_bad[i] = True
             continue
 
@@ -190,9 +189,9 @@ def apply_efficiency_correction(
     Применяет поправку на эффективность к сетке треков.
     Ненадёжные θ-строки обнуляются.
 
-    grid     — shape (T, P)
-    corr_vec — shape (T,)
-    mask_bad — shape (T,)
+    grid     -- shape (T, P)
+    corr_vec -- shape (T,)
+    mask_bad -- shape (T,)
 
     Возвращает grid_corrected shape (T, P).
     """
@@ -202,7 +201,7 @@ def apply_efficiency_correction(
         if is_bad:
             grid_corr[i, :] = 0.0
         else:
-            grid_corr[i, :] = grid[i, :] / coeff
+            grid_corr[i, :] = grid[i, :] * coeff
 
     return grid_corr
 
@@ -214,24 +213,23 @@ def apply_efficiency_correction(
 def normalize(
     grid: np.ndarray,
     mode: str = NORMALIZATION,
-    theta_bins: np.ndarray | None = None,
     ref_total: float | None = None,
 ) -> tuple[np.ndarray, dict]:
     """
     Нормализует сетку треков.
 
     Режимы:
-        "none"         — без нормализации, возвращает копию
-        "per_detector" — делит на суммарное число треков детектора
+        "none"         -- без нормализации, возвращает копию
+        "per_detector" -- делит на суммарное число треков детектора
                          (убирает различия в статистике между детекторами)
-        "global"       — делит на ref_total (глобальный max/sum по всем дет.)
+        "global"       -- делит на ref_total (глобальный max/sum по всем дет.)
                          (сохраняет относительные веса детекторов)
-        "angular"      — нормировка на θ-профиль (theta marginal)
+        "angular"      -- нормировка на θ-профиль (theta marginal)
                          (убирает cos²θ-тренд, оставляет φ-аномалии)
 
     Возвращает:
-        grid_norm — нормированный массив shape (T, P)
-        norm_info — словарь с параметрами нормализации (для инверсии)
+        grid_norm -- нормированный массив shape (T, P)
+        norm_info -- словарь с параметрами нормализации (для инверсии)
     """
     grid_norm = grid.copy().astype(float)
     norm_info = {"mode": mode}
@@ -248,7 +246,7 @@ def normalize(
     elif mode == "global":
         if ref_total is None:
             raise ValueError("mode='global' требует ref_total")
-        norm_info["ref_total"] = ref_total
+        norm_info["ref_total"] = ref_total      # type: ignore
         if ref_total > 0:
             grid_norm = grid_norm / ref_total
 
@@ -258,7 +256,7 @@ def normalize(
             row[row > 0].mean() if (row > 0).any() else 1.0
             for row in grid
         ])
-        norm_info["theta_profile"] = theta_profile
+        norm_info["theta_profile"] = theta_profile      # type: ignore
         for i, prof_val in enumerate(theta_profile):
             if prof_val > 0:
                 grid_norm[i, :] = grid_norm[i, :] / prof_val
@@ -283,8 +281,8 @@ def winsorize(
     Считается только по ненулевым ячейкам.
 
     Возвращает:
-        grid_wins — обрезанный массив
-        threshold — применённый порог
+        grid_wins -- обрезанный массив
+        threshold -- применённый порог
     """
     nonzero_vals = grid[grid > 0] if mask_zero is None else grid[~mask_zero]
     if len(nonzero_vals) == 0:
@@ -292,7 +290,7 @@ def winsorize(
 
     threshold = np.percentile(nonzero_vals, percentile)
     grid_wins = np.clip(grid, 0, threshold)
-    return grid_wins, threshold
+    return grid_wins, threshold             # type: ignore
 
 
 def transform(
@@ -303,9 +301,9 @@ def transform(
     Применяет монотонную трансформацию к значениям N_tracks.
 
     Режимы:
-        "none"  — без трансформации
-        "log1p" — log(1 + N), приближает к нормальному распределению
-        "sqrt"  — √N, мягче log1p, полезно при умеренной асимметрии
+        "none"  -- без трансформации
+        "log1p" -- log(1 + N), приближает к нормальному распределению
+        "sqrt"  -- √N, мягче log1p, полезно при умеренной асимметрии
     """
     if mode == "none":
         return grid.copy()
@@ -324,9 +322,9 @@ def inverse_transform(
     """
     Обратная трансформация (для восстановления предсказаний модели).
 
-    "log1p" → expm1
-    "sqrt"  → квадрат
-    "none"  → без изменений
+    "log1p" -> expm1
+    "sqrt"  -> квадрат
+    "none"  -> без изменений
     """
     if mode == "none":
         return grid.copy()
@@ -366,10 +364,10 @@ def preprocess_detector(
       6. Трансформация
 
     Параметры:
-      apply_eff_correction — применять ли поправку из EffCorFile_Tracks.dat.
-        True  (по умолчанию) — применять. Используй если данные сырые.
-        False — пропустить. Используй если поправка уже была применена
-                при сборке Tracks_DistrOutput (уточни у научного руководителя).
+      apply_eff_correction      -- применять ли поправку из EffCorFile_Tracks.dat.
+        True  (по умолчанию)    -- применять. Используй если данные сырые.
+        False                   -- пропустить. Используй если поправка уже была применена
+                                   при сборке Tracks_DistrOutput (уточни у научного руководителя).
 
     Возвращает DetectorSample или None если данные недоступны.
     """
@@ -397,7 +395,7 @@ def preprocess_detector(
     # Шаг 3: нормализация
     grid_norm, norm_info = normalize(
         grid_eff, mode=normalization,
-        theta_bins=theta_bins, ref_total=ref_total,
+        ref_total=ref_total,
     )
 
     # Шаг 4: винсоризация (до трансформации, на нормированных данных)
@@ -473,7 +471,7 @@ def preprocess_all_detectors(
         print(f"  Нормализация: {normalization} | Трансформация: {transform_mode}")
         print(f"  Поправка на эффективность: {'да' if apply_eff_correction else 'нет (отключена)'}")
 
-    # Для global normalization — предварительно считаем ref_total
+    # Для global normalization -- предварительно считаем ref_total
     ref_total = None
     if normalization == "global":
         totals = []
@@ -527,13 +525,13 @@ def save_preprocessed(
     Сохраняет предобработанные данные в .npz файл.
 
     Структура файла:
-        grids       — shape (N_dets, T, P) — финальные массивы
-        grids_raw   — shape (N_dets, T, P) — сырые данные
-        grids_eff   — shape (N_dets, T, P) — после поправки
-        detectors   — shape (N_dets,)      — номера детекторов
-        theta       — shape (T,)
-        phi         — shape (P,)
-        meta_*      — метаданные
+        grids       -- shape (N_dets, T, P) -- финальные массивы
+        grids_raw   -- shape (N_dets, T, P) -- сырые данные
+        grids_eff   -- shape (N_dets, T, P) -- после поправки
+        detectors   -- shape (N_dets,)      -- номера детекторов
+        theta       -- shape (T,)
+        phi         -- shape (P,)
+        meta_*      -- метаданные
 
     Возвращает путь к сохранённому файлу.
     """
@@ -587,7 +585,7 @@ def load_preprocessed(
     data = dict(np.load(fname, allow_pickle=True))
     print(f"  Загружено: {fname.name}")
     print(f"  grids shape: {data['grids'].shape}  "
-          f"(детекторов × θ-бинов × φ-бинов)")
+          f"(детекторов * θ-бинов * φ-бинов)")
     return data
 
 
@@ -601,11 +599,11 @@ def plot_preprocessing_steps(
 ) -> plt.Figure:
     """
     Для одного детектора показывает все шаги пайплайна:
-    сырые данные → после поправки → после нормализации → финал.
+    сырые данные -> после поправки -> после нормализации -> финал.
     """
     fig, axes = plt.subplots(2, 2, figsize=(14, 10))
     fig.suptitle(
-        f"Шаги предобработки — дет.№{sample.det}, "
+        f"Шаги предобработки -- дет.№{sample.det}, "
         f"{sample.npl}/{sample.binning}",
         fontsize=13, fontweight="bold",
     )
@@ -614,7 +612,7 @@ def plot_preprocessing_steps(
         (sample.grid_raw,  "1. Сырые данные (N_tracks)",         "inferno"),
         (sample.grid_eff,  "2. После поправки на эффективность", "inferno"),
         (sample.grid_norm, "3. После нормализации",              "viridis"),
-        (sample.grid,      f"4. Финал ({sample.meta['transform']})", "viridis"),
+        (sample.grid,     f"4. Финал ({sample.meta['transform']})", "viridis"),
     ]
 
     for ax, (grid, title, cmap) in zip(axes.flat, panels):
@@ -657,7 +655,7 @@ def plot_preprocessing_summary(
 
     fig = plt.figure(figsize=(18, 14))
     fig.suptitle(
-        f"Итоги предобработки — {npl}/{binning}\n"
+        f"Итоги предобработки -- {npl}/{binning}\n"
         f"Нормализация: {samples[0].meta['normalization']} | "
         f"Трансформация: {samples[0].meta['transform']}",
         fontsize=13, fontweight="bold", y=0.98,
@@ -686,7 +684,7 @@ def plot_preprocessing_summary(
     ax2.bar(x, bad_bins, color="#EF9A9A", edgecolor="k", linewidth=0.4)
     ax2.set_xticks(x); ax2.set_xticklabels([f"#{d}" for d in det_ids], fontsize=7)
     ax2.set_ylabel("Исключено θ-бинов")
-    ax2.set_title("Ненадёжные θ-бины\n(поправка > {:.0f}×)".format(
+    ax2.set_title("Ненадёжные θ-бины\n(поправка > {:.0f}*)".format(
         samples[0].meta["eff_corr_max"]), fontweight="bold")
 
     # ── (0,2) Распределение N_tracks: raw vs final ──────────────────────────
@@ -719,12 +717,11 @@ def plot_preprocessing_summary(
     # ── (1,2) Сводная статистика ─────────────────────────────────────────────
     ax5 = fig.add_subplot(gs[1, 2])
     ax5.axis("off")
-    step = float(binning.replace("Grad", ""))
     n_theta = len(samples[0].theta)
     n_phi   = len(samples[0].phi)
     table_data = [
         ["Детекторов",      str(len(samples))],
-        ["Форма сетки",     f"{n_theta} × {n_phi}"],
+        ["Форма сетки",     f"{n_theta} * {n_phi}"],
         ["θ-бинов рабочих", f"{n_theta - int(np.mean(bad_bins))}/{n_theta}"],
         ["Нормализация",    samples[0].meta["normalization"]],
         ["Трансформация",   samples[0].meta["transform"]],
@@ -736,7 +733,7 @@ def plot_preprocessing_summary(
         cellText=table_data,
         colLabels=["Параметр", "Значение"],
         cellLoc="left", loc="center", bbox=[0, 0, 1, 1],
-    )
+    )                                   # type: ignore
     tbl.auto_set_font_size(False); tbl.set_fontsize(9)
     for (r, c), cell in tbl.get_celld().items():
         if r == 0:
@@ -769,7 +766,7 @@ def analyze_parameters(
     Что показывает каждая панель:
       (0,0) Гистограммы raw / log1p / sqrt + нормальность (Q-Q)
       (0,1) Q-Q plot для трёх трансформаций
-      (0,2) Поправка на эффективность по θ — насколько она значима
+      (0,2) Поправка на эффективность по θ -- насколько она значима
       (1,0) Вариация суммарных треков между детекторами
       (1,1) θ-профиль: насколько силён cos²θ тренд (нужна ли angular norm)
       (1,2) Итоговые рекомендации в виде таблицы
@@ -782,6 +779,8 @@ def analyze_parameters(
     theta_profile_eff = None
 
     eff_data = load_efficiency(npl, binning)
+
+    theta_bins = None
 
     for det in GOOD_DETS:
         raw = load_tracks(npl, binning, det)
@@ -805,7 +804,6 @@ def analyze_parameters(
             theta_profile_raw += grid_raw
             theta_profile_eff += grid_eff
 
-    raw_vals = np.array(raw_vals)
     eff_vals = np.array(eff_vals)
     sums_raw = np.array(sums_raw)
     sums_eff = np.array(sums_eff)
@@ -831,19 +829,18 @@ def analyze_parameters(
             "sw_p":  sw_p,
         }
 
-    # ── Вариация между детекторами ────────────────────────────────────────────
-    cv_raw = sums_raw.std() / sums_raw.mean() * 100
+    # ── Вариация между детекторами ────────────────────────────────────
     cv_eff = sums_eff.std() / sums_eff.mean() * 100
     ratio  = sums_eff.max() / sums_eff.min()
 
     # ── Насколько силён θ-тренд (нужна ли angular norm) ─────────────────────
-    # Если max/min профиля > 3 — тренд сильный, angular помогает
+    # Если max/min профиля > 3 -- тренд сильный, angular помогает
     theta_trend_ratio = t_profile_e.max() / max(t_profile_e[t_profile_e > 0].min(), 1e-9)
 
     # ── Строим рисунок ────────────────────────────────────────────────────────
     fig = plt.figure(figsize=(20, 12))
     fig.suptitle(
-        f"Диагностика параметров предобработки — {npl}/{binning}",
+        f"Диагностика параметров предобработки -- {npl}/{binning}",
         fontsize=14, fontweight="bold", y=0.98,
     )
     gs = gridspec.GridSpec(2, 3, figure=fig, hspace=0.42, wspace=0.35)
@@ -878,7 +875,7 @@ def analyze_parameters(
               color="gray", lw=1.5, ls="--", label="Нормаль")
     ax01.set_xlabel("Теор. квантили")
     ax01.set_ylabel("Выб. квантили")
-    ax01.set_title("Q-Q plot — насколько\nблизко к нормальному?", fontweight="bold")
+    ax01.set_title("Q-Q plot -- насколько\nблизко к нормальному?", fontweight="bold")
     ax01.legend(fontsize=9, markerscale=3)
 
     # ── (0,2) Поправка на эффективность ──────────────────────────────────────
@@ -892,7 +889,7 @@ def analyze_parameters(
              color=colors_eff, edgecolor="k", linewidth=0.3)
     ax02.axhline(1.0,          color="gray", ls="--", lw=1.2, label="Поправка = 1")
     ax02.axhline(EFF_CORR_MAX, color="tomato", ls=":", lw=1.5,
-                 label=f"Порог = {EFF_CORR_MAX}×")
+                 label=f"Порог = {EFF_CORR_MAX}*")
     ax02.set_xticks(range(len(theta_arr)))
     ax02.set_xticklabels([f"{t:.0f}°" for t in theta_arr], rotation=45, fontsize=7)
     ax02.set_xlabel("θ (°)")
@@ -917,13 +914,13 @@ def analyze_parameters(
     ax10.set_xticklabels([f"#{d}" for d in GOOD_DETS], rotation=45, fontsize=7)
     ax10.set_ylabel("Треков (тыс.)")
     ax10.set_title(
-        f"Статистика треков по детекторам\nCV={cv_eff:.1f}%, ratio={ratio:.1f}×",
+        f"Статистика треков по детекторам\nCV={cv_eff:.1f}%, ratio={ratio:.1f}*",
         fontweight="bold",
     )
     ax10.legend(fontsize=9)
     ax10.text(
         0.02, 0.97,
-        "→ per_detector norm" if cv_eff > 20 else "→ global norm достаточно",
+        "-> per_detector norm" if cv_eff > 20 else "-> global norm достаточно",
         transform=ax10.transAxes, va="top", fontsize=9, color="#1B5E20",
     )
 
@@ -939,8 +936,8 @@ def analyze_parameters(
     ax11.set_xlabel("θ (°)")
     ax11.set_ylabel("Нормированный профиль")
     ax11.set_title(
-        f"θ-профиль: тренд max/min = {theta_trend_ratio:.1f}×\n"
-        f"{'→ angular norm рекомендуется' if theta_trend_ratio > 3 else '→ angular norm опциональна'}",
+        f"θ-профиль: тренд max/min = {theta_trend_ratio:.1f}*\n"
+        f"{'-> angular norm рекомендуется' if theta_trend_ratio > 3 else '-> angular norm опциональна'}",
         fontweight="bold",
     )
     ax11.legend(fontsize=9)
@@ -958,7 +955,7 @@ def analyze_parameters(
     angular_rec = "да" if theta_trend_ratio > 3 else "нет"
 
     def sw_verdict(p):
-        if p > 0.05:   return "нормальное ✓"
+        if p > 0.05:   return "нормальное SUCCESS!"
         if p > 0.001:  return "близко к норм."
         return "не норм."
 
@@ -966,23 +963,23 @@ def analyze_parameters(
         ["Параметр", "Значение", "Вывод"],
         ["Трансформация",
          f"skew raw={stats_table['raw']['skew']:.2f}",
-         f"→ {best_transform}"],
+         f"-> {best_transform}"],
         ["  log1p skew",  f"{stats_table['log1p']['skew']:.2f}",
          sw_verdict(stats_table["log1p"]["sw_p"])],
         ["  sqrt  skew",  f"{stats_table['sqrt']['skew']:.2f}",
          sw_verdict(stats_table["sqrt"]["sw_p"])],
         ["Нормализация",
-         f"CV={cv_eff:.1f}%, ratio={ratio:.1f}×",
-         f"→ {norm_rec}"],
+         f"CV={cv_eff:.1f}%, ratio={ratio:.1f}*",
+         f"-> {norm_rec}"],
         ["Angular norm",
-         f"тренд={theta_trend_ratio:.1f}×",
-         f"→ {angular_rec}"],
+         f"тренд={theta_trend_ratio:.1f}*",
+         f"-> {angular_rec}"],
         ["Поправка эфф.",
          f"{n_bad} ненадёжных θ",
-         "проверь у руковод." if n_bad == 0 else f"→ исключить {n_bad} θ-бин(а)"],
+         "проверь у руковод." if n_bad == 0 else f"-> исключить {n_bad} θ-бин(а)"],
         ["Винсоризация",
          f"p99.5={np.percentile(eff_vals, 99.5):.1f}",
-         "→ рекомендуется"],
+         "-> рекомендуется"],
     ]
 
     tbl = ax12.table(
@@ -990,7 +987,7 @@ def analyze_parameters(
         colLabels=rows[0][1:],
         rowLabels=[r[0] for r in rows[1:]],
         cellLoc="left", loc="center", bbox=[0, 0, 1, 1],
-    )
+    )           # type: ignore
     tbl.auto_set_font_size(False); tbl.set_fontsize(8.5)
     for (r, c), cell in tbl.get_celld().items():
         if r == 0 or c == -1:
@@ -1000,7 +997,7 @@ def analyze_parameters(
             cell.set_facecolor("#ECEFF1")
         # Подсветить рекомендованную трансформацию
         txt = str(cell.get_text().get_text())
-        if f"→ {best_transform}" in txt or "✓" in txt:
+        if f"-> {best_transform}" in txt or "SUCCESS!" in txt:
             cell.set_facecolor("#C8E6C9")
     ax12.set_title("Рекомендации по параметрам", fontweight="bold", pad=10)
 
@@ -1016,11 +1013,11 @@ def analyze_parameters(
           f"(skew={stats_table[best_transform]['skew']:.2f}, "
           f"cv={stats_table[best_transform]['cv']:.1f}%)")
     print(f"  Нормализация     : {norm_rec}  "
-          f"(CV детекторов={cv_eff:.1f}%, ratio={ratio:.1f}×)")
+          f"(CV детекторов={cv_eff:.1f}%, ratio={ratio:.1f}*)")
     print(f"  Angular norm     : {'рекомендуется' if theta_trend_ratio > 3 else 'опциональна'}  "
-          f"(тренд={theta_trend_ratio:.1f}×)")
+          f"(тренд={theta_trend_ratio:.1f}*)")
     print(f"  Ненадёжных θ-бин : {n_bad}  "
-          f"({'проверь у руководителя — возможно поправка уже применена' if n_bad == 0 else 'будут исключены'})")
+          f"({'проверь у руководителя -- возможно поправка уже применена' if n_bad == 0 else 'будут исключены'})")
     print(f"  Винсоризация     : p99.5 = {np.percentile(eff_vals, 99.5):.1f}")
 
     return fig
@@ -1045,18 +1042,18 @@ def main(
     Точка входа для запуска предобработки или диагностики.
 
     Параметры:
-        npl               — уровень качества трека: "npl3", "npl4", "npl5", "npl6"
-        binning           — угловой биннинг: "1.0Grad", "1.5Grad", "2.0Grad", "2.5Grad"
-        normalization     — режим нормализации (см. константу NORMALIZATION)
-        transform_mode    — трансформация значений (см. константу TRANSFORM)
-        apply_eff_correction — применять ли поправку на эффективность
-        winsorize_pct     — перцентиль для обрезки выбросов, None = отключить
-        analyze           — если True, запускает диагностику вместо предобработки
-        save_npz          — сохранять ли предобработанные данные в .npz
-        save_plots        — сохранять ли графики в figures/
+        npl               -- уровень качества трека: "npl3", "npl4", "npl5", "npl6"
+        binning           -- угловой биннинг: "1.0Grad", "1.5Grad", "2.0Grad", "2.5Grad"
+        normalization     -- режим нормализации (см. константу NORMALIZATION)
+        transform_mode    -- трансформация значений (см. константу TRANSFORM)
+        apply_eff_correction -- применять ли поправку на эффективность
+        winsorize_pct     -- перцентиль для обрезки выбросов, None = отключить
+        analyze           -- если True, запускает диагностику вместо предобработки
+        save_npz          -- сохранять ли предобработанные данные в .npz
+        save_plots        -- сохранять ли графики в figures/
     """
     print("=" * 60)
-    print("  Мюонография — предобработка данных")
+    print("  Мюонография -- предобработка данных")
     print("=" * 60)
 
     # ── Режим диагностики ────────────────────────────────────────────────────
@@ -1065,7 +1062,7 @@ def main(
         print(f"  Данные: {npl} / {binning}\n")
         analyze_parameters(npl, binning, save=save_plots)
         plt.show()
-        return
+        return None
 
     # ── Режим предобработки ──────────────────────────────────────────────────
     print(f"\n  Конфигурация     : {npl} / {binning}")
@@ -1087,8 +1084,8 @@ def main(
     )
 
     if not samples:
-        print("⚠  Нет данных. Проверь DATA_ROOT в config.py")
-        return
+        print("ERROR!  Нет данных. Проверь DATA_ROOT в config.py")
+        return None
 
     if save_npz:
         print("\n─── Сохранение " + "─" * 44)
@@ -1100,7 +1097,7 @@ def main(
         plot_preprocessing_steps(sample4, save=True)
         plot_preprocessing_summary(samples, save=True)
 
-    print("\n✓ Готово!")
+    print("\nSUCCESS! Готово!")
     print(f"  Данные: {PREPROC_DIR}")
     print(f"  Графики: {OUTPUT_DIR}")
 
@@ -1109,11 +1106,11 @@ def main(
   from muon_preprocessing import load_preprocessed, inverse_transform
 
   data      = load_preprocessed("npl4", "2.0Grad")
-  grids     = data["grids"]        # shape (15, 17, 180)  — вход в модель
-  grids_raw = data["grids_raw"]    # shape (15, 17, 180)  — сырые данные
-  theta     = data["theta"]        # shape (17,)  — ось θ
-  phi       = data["phi"]          # shape (180,) — ось φ
-  detectors = data["detectors"]    # shape (15,)  — номера детекторов
+  grids     = data["grids"]        # shape (15, 17, 180)  -- вход в модель
+  grids_raw = data["grids_raw"]    # shape (15, 17, 180)  -- сырые данные
+  theta     = data["theta"]        # shape (17,)  -- ось θ
+  phi       = data["phi"]          # shape (180,) -- ось φ
+  detectors = data["detectors"]    # shape (15,)  -- номера детекторов
 
   # Восстановить исходный масштаб из предсказания модели:
   # n_tracks = inverse_transform(prediction, mode=str(data["transform_mode"]))
@@ -1141,283 +1138,125 @@ if __name__ == "__main__":
 СПРАВОЧНИК ПО ПАРАМЕТРАМ ПРЕДОБРАБОТКИ
 =============================================================================
 
-Все константы задаются в config.py и автоматически импортируются сюда.
-Менять значения нужно только там — не в этом файле.
-
-─────────────────────────────────────────────────────────────────────────────
-npl  — уровень качества трека
-─────────────────────────────────────────────────────────────────────────────
-
-Параметр задаётся при вызове main() или preprocess_all_detectors().
-Определяет, из какой папки берутся данные (npl3/, npl4/ и т.д.).
-
-  "npl4"  →  1.76M треков, рекомендуется как основной датасет.
-             Баланс между статистикой и качеством трека.
-
-  "npl5"  →  1.24M треков (70% от npl4).
-             Треки чище — прошли минимум через 5 пластин.
-
-  "npl6"  →  0.61M треков (34% от npl4).
-             Максимальная чистота. Используй как эталон для валидации.
-
-  "npl3"  →  Неполный архив. Не использовать в ML.
-
-─────────────────────────────────────────────────────────────────────────────
-binning  — угловой биннинг
-─────────────────────────────────────────────────────────────────────────────
-
-Шаг разбивки сферического пространства по θ и φ.
-Влияет на размер выходного массива grids и статистику в каждом бине.
-
-  "1.0Grad"  →  shape (17, 360). ~1 трек/бин. Слишком разрежено для ML.
-
-  "1.5Grad"  →  shape (17, 240). ~4 трека/бин. Пограничный вариант.
-
-  "2.0Grad"  →  shape (17, 180). ~16 треков/бин. Оптимально.
-                Рекомендуется как основной.
-
-  "2.5Grad"  →  shape (17, 144). ~25 треков/бин. Хуже разрешение,
-                лучше статистика. Использовать как альтернативу.
-
-Примечание: 17 θ-бинов — это рабочий диапазон [58°, 90°].
-            При APPLY_EFF_CORRECTION=True остаётся 15 надёжных бинов
-            (θ=58° исключается — поправка 3.4× слишком велика).
-
-─────────────────────────────────────────────────────────────────────────────
-APPLY_EFF_CORRECTION  — поправка на эффективность детектора
-─────────────────────────────────────────────────────────────────────────────
-
-Детектор регистрирует треки под разными углами с разной эффективностью.
-EffCorFile_Tracks.dat содержит поправочный коэффициент k(θ_D):
-
-    N_corrected = N_raw / k(θ_D)
-
-где θ_D — угол в системе координат детектора, θ_D ≈ 90° − θ_Земля.
-
-Поправка надёжна только при θ_D ≤ 30° (θ_Земля ≥ 60°).
-За пределами этого диапазона коэффициент слишком большой или равен нулю.
-
-  True   →  применить. Используй если данные сырые (по умолчанию).
-
-  False  →  пропустить. Используй если поправка уже была применена
-            при сборке Tracks_DistrOutput (уточнить у руководителя).
-            При False исключённых θ-бинов нет — все 17 остаются.
-
-Управляется константой в config.py:  APPLY_EFF_CORRECTION = True
-
-─────────────────────────────────────────────────────────────────────────────
-NORMALIZATION  — нормализация N_tracks
-─────────────────────────────────────────────────────────────────────────────
-
-Зачем нужна: детекторы регистрируют разное суммарное число треков —
-разброс достигает 5.9×, CV = 39%. Без нормализации модель видит детекторы
-с разной «яркостью» без физической причины.
-
-  "per_detector"  →  делит каждый детектор на его суммарные треки.
-                     Все детекторы имеют одинаковый общий вес.
-                     Рекомендуется при CV > 20%.
-
-  "global"        →  делит на максимум среди всех детекторов.
-                     Сохраняет относительные веса детекторов.
-                     Использовать если важна абсолютная разница.
-
-  "angular"       →  делит каждую θ-строку на её среднее по φ.
-                     Убирает cos²θ тренд, оставляет только φ-аномалии.
-                     Рекомендуется если задача — поиск аномалий по φ.
-                     Диагностика показала тренд 4.7× → применимо.
-
-  "none"          →  без нормализации. Только для отладки.
-
-Управляется константой в config.py:  NORMALIZATION = "per_detector"
-
-─────────────────────────────────────────────────────────────────────────────
-TRANSFORM  — трансформация значений N_tracks
-─────────────────────────────────────────────────────────────────────────────
-
-Зачем нужна: сырое распределение N_tracks сильно скошено вправо (skew=1.53,
-CV=94.6%). Большинство нейронных сетей работают лучше с симметричным
-распределением. Трансформация применяется последней — после нормализации
-и винсоризации.
-
-  "log1p"  →  log(1 + N).
-              skew падает до −0.51, CV до 20.3%.
-              Близко к нормальному. Рекомендуется.
-              Обратное: expm1(x) = e^x − 1.
-
-  "sqrt"   →  √N.
-              skew падает до 0.68, CV до 48.9%.
-              Мягче log1p — меньше сжимает крупные значения.
-              Использовать если log1p кажется слишком агрессивным.
-              Обратное: x².
-
-  "none"   →  без трансформации.
-              Подходит для градиентного бустинга и Random Forest,
-              которые нечувствительны к масштабу значений.
-
-Управляется константой в config.py:  TRANSFORM = "log1p"
-
-Обратное преобразование (для восстановления предсказаний модели):
-
-    from muon_preprocessing import inverse_transform
-    n_tracks = inverse_transform(model_output, mode="log1p")
-
-─────────────────────────────────────────────────────────────────────────────
-WINSORIZE_PERCENTILE  — обрезка выбросов
-─────────────────────────────────────────────────────────────────────────────
-
-Заменяет все значения выше p-го перцентиля на пороговое значение.
-Применяется ПОСЛЕ нормализации и ДО трансформации.
-Считается только по ненулевым бинам.
-
-По данным npl4/2.0°: p99.5 ≈ 455 треков.
-Единичные выбросы детекторов 12, 14, 17 (z > 4) попадают выше этого порога.
-
-  99.5   →  обрезает верхние 0.5% (рекомендуется по умолчанию).
-  99.0   →  агрессивнее, если выбросов много.
-  None   →  отключить винсоризацию.
-
-Управляется константой в config.py:  WINSORIZE_PERCENTILE = 99.5
-
-─────────────────────────────────────────────────────────────────────────────
-EFF_CORR_MAX  — порог надёжности поправки
-─────────────────────────────────────────────────────────────────────────────
-
-θ-бины, для которых коэффициент поправки превышает EFF_CORR_MAX,
-исключаются из анализа (устанавливаются в 0).
-
-По данным npl4/2.0°:
-  θ=58° → θ_D=32° → коэфф=3.40 → исключается (> 2.0)
-  θ=60° → θ_D=30° → коэфф=1.65 → остаётся
-
-  2.0  →  исключает θ-бины с поправкой >2× (рекомендуется).
-  1.5  →  строже, исключит θ=60° тоже (коэфф=1.65).
-  3.0  →  мягче, оставит θ=58° (ненадёжно).
-
-Управляется константой в config.py:  EFF_CORR_MAX = 2.0
-
-=============================================================================
-СПРАВОЧНИК ПО ПАРАМЕТРАМ ПРЕДОБРАБОТКИ (подробно)
-=============================================================================
-
 Этот блок описывает все параметры, их физический смысл и рекомендации
 по выбору. Константы по умолчанию хранятся в config.py.
 
 ─────────────────────────────────────────────────────────────────────────────
-npl — уровень качества трека (number of plates)
+npl -- уровень качества трека (number of plates)
 ─────────────────────────────────────────────────────────────────────────────
 
   Определяет минимальное число эмульсионных пластин, в которых одновременно
-  зарегистрирован трек. Чем выше npl — тем чище треки (меньше фоновых
+  зарегистрирован трек. Чем выше npl -- тем чище треки (меньше фоновых
   событий), но тем меньше общая статистика.
 
   Аналог в электронных детекторах: кратность срабатывания сцинтилляторов.
 
   Варианты и их характеристики (биннинг 2.0°, рабочий диапазон):
 
-    "npl4"  —  1.764M треков  —  рекомендуется как основной датасет
-    "npl5"  —  1.238M треков  —  70% от npl4, меньше шума
-    "npl6"  —  0.606M треков  —  35% от npl4, максимальная чистота;
+    "npl4"  --  1.764M треков  --  рекомендуется как основной датасет
+    "npl5"  --  1.238M треков  --  70% от npl4, меньше шума
+    "npl6"  --  0.606M треков  --  35% от npl4, максимальная чистота;
                                   использовать как эталон при валидации
-    "npl3"  —  неполный архив —  не использовать в ML
+    "npl3"  --  неполный архив --  не использовать в ML
 
 ─────────────────────────────────────────────────────────────────────────────
-binning — угловой биннинг
+binning -- угловой биннинг
 ─────────────────────────────────────────────────────────────────────────────
 
   Шаг разбивки сферического пространства по θ и φ. Определяет размер
-  выходного массива (N_theta × N_phi) и компромисс между угловым
+  выходного массива (N_theta * N_phi) и компромисс между угловым
   разрешением и статистической наполненностью каждого бина.
 
-    "1.0Grad"  →  17 × 360 = 6120 бинов,  ~1 трек/бин  —  слишком разрежено
-    "1.5Grad"  →  17 × 240 = 4080 бинов,  ~4 трека/бин —  пограничный вариант
-    "2.0Grad"  →  17 × 180 = 3060 бинов,  ~16 треков/бин — оптимально ✓
-    "2.5Grad"  →  17 × 144 = 2448 бинов,  ~25 треков/бин — меньше разрешение
+    "1.0Grad"  ->  17 * 360 = 6120 бинов,  ~1 трек/бин  --  слишком разрежено
+    "1.5Grad"  ->  17 * 240 = 4080 бинов,  ~4 трека/бин --  пограничный вариант
+    "2.0Grad"  ->  17 * 180 = 3060 бинов,  ~16 треков/бин -- оптимально SUCCESS!
+    "2.5Grad"  ->  17 * 144 = 2448 бинов,  ~25 треков/бин -- меньше разрешение
 
   Рекомендуется: "2.0Grad". Форма выходного массива grids: (15, 17, 180).
 
 ─────────────────────────────────────────────────────────────────────────────
-apply_eff_correction — поправка на эффективность детектора
+apply_eff_correction -- поправка на эффективность детектора
 ─────────────────────────────────────────────────────────────────────────────
 
   Детектор регистрирует треки с разной эффективностью в зависимости от угла
   θ_D (угол трека в системе координат самого детектора). При больших θ_D
   трек проходит пластины под наклоном, часть треков «вылезает» за границы
-  пластины и не набирает нужного числа npl — таким образом детектор
+  пластины и не набирает нужного числа npl -- таким образом детектор
   «недосчитывает» реальные события.
 
   Поправочный коэффициент из EffCorFile_Tracks.dat устраняет это смещение:
-      N_corrected = N_raw / correction_coeff
+      N_corrected = N_raw * correction_coeff
 
   Надёжность поправки по диапазонам (для нашей установки):
 
-    θ_D ≤ 22°  →  поправка в пределах ±15%  →  вполне надёжно
-    θ_D ≤ 30°  →  поправка ≤ 2.0×           →  допустимо (EFF_CORR_MAX)
-    θ_D > 30°  →  поправка > 2.0× или = 0   →  ненадёжно, бин исключается
+    θ_D ≤ 22°  ->  поправка в пределах ±15%  ->  вполне надёжно
+    θ_D ≤ 30°  ->  поправка ≤ 2.0*           ->  допустимо (EFF_CORR_MAX)
+    θ_D > 30°  ->  поправка > 2.0* или = 0   ->  ненадёжно, бин исключается
 
   Связь с земными координатами (θ_D ≈ 90° − θ_Earth):
 
-    θ_Earth = 58°  →  θ_D ≈ 32°  →  поправка 3.4×  →  ИСКЛЮЧАЕТСЯ
-    θ_Earth = 60°  →  θ_D ≈ 30°  →  поправка 1.65× →  допустимо
-    θ_Earth ≥ 62°  →  θ_D ≤ 28°  →  поправка ≤ 1.4× →  надёжно ✓
+    θ_Earth = 58°  ->  θ_D ≈ 32°  ->  поправка 3.4*  ->  ИСКЛЮЧАЕТСЯ
+    θ_Earth = 60°  ->  θ_D ≈ 30°  ->  поправка 1.65* ->  допустимо
+    θ_Earth ≥ 62°  ->  θ_D ≤ 28°  ->  поправка ≤ 1.4* ->  надёжно SUCCESS!
 
-  True  — применять (по умолчанию; используй если данные сырые)
-  False — пропустить (если поправка уже была применена при сборке данных;
+  True  -- применять (по умолчанию; используй если данные сырые)
+  False -- пропустить (если поправка уже была применена при сборке данных;
           уточни у научного руководителя)
 
 ─────────────────────────────────────────────────────────────────────────────
-normalization — нормализация
+normalization -- нормализация
 ─────────────────────────────────────────────────────────────────────────────
 
   Детекторы регистрируют разное суммарное число треков из-за разного
-  расположения и ориентации. Разброс в наших данных: 5.9×, CV = 39%.
+  расположения и ориентации. Разброс в наших данных: 5.9*, CV = 39%.
   Без нормализации модель видит детекторы с разной «яркостью» без какой-
-  либо физической причины — это мешает обобщению.
+  либо физической причины -- это мешает обобщению.
 
-  "per_detector"  — делит каждый детектор на его собственную сумму треков:
+  "per_detector"  -- делит каждый детектор на его собственную сумму треков:
                       grid_norm = grid / grid.sum()
                     Все детекторы получают одинаковый «вес». Устраняет
                     разброс в абсолютных значениях. Рекомендуется при CV > 20%.
 
-  "global"        — делит на максимум суммы треков среди всех детекторов:
+  "global"        -- делит на максимум суммы треков среди всех детекторов:
                       grid_norm = grid / max(det_sums)
                     Сохраняет относительные веса детекторов. Применять когда
                     важно, что один детектор видит больше треков, чем другой.
 
-  "angular"       — делит каждую строку θ на её среднее по φ:
+  "angular"       -- делит каждую строку θ на её среднее по φ:
                       grid_norm[i, :] = grid[i, :] / mean(grid[i, :])
                     Убирает cos²θ-тренд (систематическое убывание треков
                     с ростом θ), оставляя только φ-аномалии. Применять когда
-                    задача — поиск аномалий именно в азимутальном распределении.
-                    По нашим данным: тренд 4.7× → рекомендуется как второй шаг
+                    задача -- поиск аномалий именно в азимутальном распределении.
+                    По нашим данным: тренд 4.7* -> рекомендуется как второй шаг
                     после per_detector.
 
-  "none"          — без нормализации. Только для отладки или если нормализация
+  "none"          -- без нормализации. Только для отладки или если нормализация
                     выполняется снаружи этого скрипта.
 
 ─────────────────────────────────────────────────────────────────────────────
-transform_mode — трансформация значений
+transform_mode -- трансформация значений
 ─────────────────────────────────────────────────────────────────────────────
 
   Сырые значения N_tracks имеют сильно скошенное распределение:
 
-    raw:   skew = +1.53,  CV = 94.6%  — правосторонняя асимметрия
-    log1p: skew = −0.51,  CV = 20.3%  — близко к нормальному ✓
-    sqrt:  skew = +0.68,  CV = 48.9%  — промежуточный результат
+    raw:   skew = +1.53,  CV = 94.6%  -- правосторонняя асимметрия
+    log1p: skew = −0.51,  CV = 20.3%  -- близко к нормальному SUCCESS!
+    sqrt:  skew = +0.68,  CV = 48.9%  -- промежуточный результат
 
   Большинство нейронных сетей работают лучше с симметричным распределением
   и меньшей дисперсией. Трансформация применяется после нормализации
   и после винсоризации.
 
-  "log1p"  —  log(1 + N)
+  "log1p"  --  log(1 + N)
               Наиболее агрессивное сжатие хвоста. Рекомендуется.
               Обратное преобразование: expm1(x) = e^x − 1
 
-  "sqrt"   —  √N
+  "sqrt"   --  √N
               Мягче log1p. Подходит если нужно сохранить более
               широкий динамический диапазон выходных значений.
               Обратное преобразование: x²
 
-  "none"   —  без трансформации.
+  "none"   --  без трансформации.
               Подходит для ансамблевых методов (Random Forest, XGBoost),
               нечувствительных к масштабу входных данных.
               Обратное преобразование: не требуется
@@ -1427,33 +1266,33 @@ transform_mode — трансформация значений
       n_tracks = inverse_transform(model_output, mode="log1p")
 
 ─────────────────────────────────────────────────────────────────────────────
-winsorize_pct — винсоризация (обрезка выбросов)
+winsorize_pct -- винсоризация (обрезка выбросов)
 ─────────────────────────────────────────────────────────────────────────────
 
   В анализе аномалий выявлены единичные бины с аномально высокими
   значениями (z > 4σ) у детекторов 12, 14, 17. Винсоризация заменяет
   все значения выше заданного перцентиля на пороговое значение.
 
-  Применяется ПОСЛЕ нормализации и ДО трансформации — это важно,
+  Применяется ПОСЛЕ нормализации и ДО трансформации -- это важно,
   потому что порог определяется в нормированном пространстве.
 
-  99.5  — обрезать верхние 0.5% значений (по умолчанию)
+  99.5  -- обрезать верхние 0.5% значений (по умолчанию)
           При per_detector нормализации пороговое значение ≈ 0.0033
           (соответствует ~454 сырым трекам)
-  99.9  — обрезать только самые экстремальные выбросы (мягче)
-  None  — не применять (для ансамблевых методов, устойчивых к выбросам)
+  99.9  -- обрезать только самые экстремальные выбросы (мягче)
+  None  -- не применять (для ансамблевых методов, устойчивых к выбросам)
 
 ─────────────────────────────────────────────────────────────────────────────
-EFF_CORR_MAX — порог надёжности поправки (в config.py)
+EFF_CORR_MAX -- порог надёжности поправки (в config.py)
 ─────────────────────────────────────────────────────────────────────────────
 
   Если поправочный коэффициент для θ-бина превышает EFF_CORR_MAX,
   этот бин считается ненадёжным и обнуляется.
 
-  2.0  — стандартный порог (по умолчанию)
-         При нашей установке исключает θ = 58° (поправка 3.4×)
-  1.5  — строже (исключит также θ = 60°, поправка 1.65×)
-  3.0  — мягче (оставит θ = 58° с поправкой 3.4×, не рекомендуется)
+  2.0  -- стандартный порог (по умолчанию)
+         При нашей установке исключает θ = 58° (поправка 3.4*)
+  1.5  -- строже (исключит также θ = 60°, поправка 1.65*)
+  3.0  -- мягче (оставит θ = 58° с поправкой 3.4*, не рекомендуется)
 
 ─────────────────────────────────────────────────────────────────────────────
 ИТОГОВЫЙ ПАЙПЛАЙН
@@ -1461,21 +1300,21 @@ EFF_CORR_MAX — порог надёжности поправки (в config.py)
 
   Tracks_DistrOutput_N.dat
           │
-          ▼  filter_working_range()        θ ∈ [58°, 90°] → сетка (17×180)
+          V  filter_working_range()        θ ∈ [58°, 90°] -> сетка (17*180)
      grid_raw
           │
-          ▼  apply_efficiency_correction() ÷ поправка; θ=58° → 0
+          V  apply_efficiency_correction() ÷ поправка; θ=58° -> 0
      grid_eff
           │
-          ▼  normalize()                   ÷ сумма детектора (per_detector)
+          V  normalize()                   ÷ сумма детектора (per_detector)
      grid_norm
           │
-          ▼  winsorize()                   обрезка верхних 0.5%
+          V  winsorize()                   обрезка верхних 0.5%
           │
-          ▼  transform()                   log(1 + N)
-       grid                           ← финальный вход в модель (17×180)
+          V  transform()                   log(1 + N)
+       grid                           ← финальный вход в модель (17*180)
           │
-          ▼  save_preprocessed()
+          V  save_preprocessed()
   npl4_2.0Grad_preprocessed.npz
       ├── grids       (15, 17, 180)   финал
       ├── grids_raw   (15, 17, 180)   сырые (для сравнения)
@@ -1493,13 +1332,13 @@ EFF_CORR_MAX — порог надёжности поправки (в config.py)
     transform_mode="log1p", apply_eff_correction=True, winsorize_pct=99.5
 
   Эталон для валидации (чистые данные):
-    npl="npl6", binning="2.0Grad" — остальные параметры те же
+    npl="npl6", binning="2.0Grad" -- остальные параметры те же
 
   Поиск φ-аномалий (убрать θ-тренд):
-    normalization="angular" — применить после per_detector нормализации
+    normalization="angular" -- применить после per_detector нормализации
 
   Ансамблевые методы (деревья, RF):
-    transform_mode="none", winsorize_pct=None — не нужны
+    transform_mode="none", winsorize_pct=None -- не нужны
 
 =============================================================================
 """
