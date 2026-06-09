@@ -453,6 +453,60 @@ def plot_overview(binning: str = "2.0Grad", save: bool = True):
 # ГЛАВНАЯ ФУНКЦИЯ
 # ─────────────────────────────────────────────────────────────────────────────
 
+def plot_heatmaps_grid(npls: list = None, binnings: list = None,
+                       theta_max: float = 90.0, save: bool = True):
+    """
+    Сетка тепловых карт: строки — npl, столбцы — биннинг.
+    Позволяет сравнивать распределения по обоим параметрам.
+    """
+    if npls is None:
+        npls = ["npl4", "npl5", "npl6"]
+    if binnings is None:
+        binnings = ["1.0Grad", "1.5Grad", "2.0Grad", "2.5Grad"]
+
+    n_rows, n_cols = len(npls), len(binnings)
+    fig, axes = plt.subplots(n_rows, n_cols,
+                             figsize=(5.5 * n_cols, 5 * n_rows),
+                             sharex=True, sharey=True)
+
+    fig.suptitle("Угловые распределения треков (θ,φ) — сравнение npl и биннинга",
+                 fontsize=14, fontweight="bold", y=1.02)
+
+    for i, npl in enumerate(npls):
+        for j, binning in enumerate(binnings):
+            ax = axes[i, j] if n_rows > 1 else axes[j]
+            data = sum_all_detectors(npl, binning)
+
+            if data is None:
+                ax.set_title(f"{npl}, {binning}\nнет данных", fontsize=9)
+                ax.text(0.5, 0.5, 'Нет данных', ha='center', va='center',
+                        transform=ax.transAxes, color='gray')
+                continue
+
+            p_bins, t_bins, grid = make_grid(data)
+            im = ax.pcolormesh(p_bins, t_bins, grid,
+                               cmap="inferno", shading="auto")
+            total = data[(data[:, 0] <= theta_max) & (data[:, 0] > 0), 2].sum()
+            ax.set_title(f"{npl}, {binning} | Σ={total:,.0f}", fontsize=9)
+
+            # Подписи только по краям
+            if i == n_rows - 1:
+                ax.set_xlabel("φ (°)")
+            if j == 0:
+                ax.set_ylabel("θ (°)")
+
+    # Одна цветовая шкала для всех
+    fig.subplots_adjust(right=0.92)
+    cbar_ax = fig.add_axes([0.94, 0.15, 0.02, 0.7])
+    fig.colorbar(im, cax=cbar_ax, label="Треки (с поправкой)")
+
+    if save:
+        fig.savefig(OUTPUT_DIR / "heatmaps_grid_npl_binning.png",
+                    bbox_inches="tight", dpi=150)
+        print("  Сохранён: heatmaps_grid_npl_binning.png")
+    return fig
+
+
 def main():
     print("=" * 60)
     print("  Мюонография -- анализ базы данных треков")
@@ -486,7 +540,8 @@ def main():
 
 
 if __name__ == "__main__":
-    main()
+    ## main()
+    plot_heatmaps_grid()
 
 """
 Объяснение графиков:

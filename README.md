@@ -10,19 +10,20 @@
 
 ```
 .
- 
-├── 
-├── 
-├── 
+├── config.py                   # ← Центральная конфигурация (пути, константы, загрузка данных)
+├── muon_analysis.py            # Разведочный анализ (EDA): геометрия, распределения, биннинг
+├── muon_anomaly_analysis.py    # Анализ качества: пропуски, выбросы, кросс-детекторная проверка
+├── muon_preprocessing.py       # Предобработка: поправка эфф., нормализация, log1p → .npz
+├── muon_smoothing.py           # Сглаживание: Гаусс, градиент, вейвлет (baseline для U-Net)
+├── muon_synth.py               # Генератор синтетических данных (cos²θ + Пуассон + аномалии)
+├── muon_unet.py                # U-Net: архитектура, обучение (pretraining → fine-tuning)
 ├── figures/                    # Сюда сохраняются все графики
-│   ├── muon_analysis               # Графики из muon_analysis.py
-│   ├── muon_anomaly_analysis       # Графики из muon_anomaly_analysis.py
-├── data/                       # Данные
-│   ├── npl3/                       # Уровни прохождения пластин
+├── data/                       # Данные (не в репозитории — см. раздел «Данные»)
+│   ├── npl3/
 │   ├── npl4/
 │   ├── npl5/
 │   └── npl6/
-│       ├── 1.0Grad/                    # Угловое разбиение
+│       ├── 1.0Grad/
 │       ├── 1.5Grad/
 │       ├── 2.0Grad/
 │       └── 2.5Grad/
@@ -30,11 +31,6 @@
 │           ├── Input.txt
 │           ├── EffCorFile_Tracks.dat
 │           └── Tracks_DistrOutput_1.dat  ...  Tracks_DistrOutput_18.dat
-├── src                         # Все файлы с колдом
-│   ├── config.py                   # Центральная конфигурация (пути, константы, загрузка данных)
-│   ├── muon_analysis.py            # Разведочный анализ (EDA): геометрия, распределения, биннинг
-│   ├── muon_anomaly_analysis.py    # Анализ качества: пропуски, выбросы, кросс-детекторная проверка
-├── requirements.txt
 └── README.md
 ```
 
@@ -45,7 +41,7 @@
 ### 1. Клонировать репозиторий
 
 ```bash
-git clone https://github.com/fantas-coder/MuonAnalysis
+git clone https://github.com/<your-org>/muon-tomography.git
 cd muon-tomography
 ```
 
@@ -54,16 +50,18 @@ cd muon-tomography
 ```bash
 python -m venv .venv
 source .venv/bin/activate        # Windows: .venv\Scripts\activate
-pip install -r requirements.txt
+pip install numpy matplotlib scipy scikit-image PyWavelets torch
 ```
 
 ### 3. Подключить данные
 
-Данные хранятся прямо в репозитории.
+Данные **не хранятся в репозитории** (слишком большой объём). Получи архивы у руководителя или у коллег и распакуй так, чтобы получилась структура `data/npl4/2.0Grad/...` относительно корня репозитория.
+
+Если данные лежат в другом месте — укажи путь в `config.py`:
 
 ```python
 # config.py
-DATA_ROOT = Path("/path/to/your/data")
+DATA_ROOT = Path("/path/to/your/data")   # ← поменяй здесь
 ```
 
 Быстро проверить, что всё подключено правильно:
@@ -85,12 +83,12 @@ python config.py
   BAD_DETS   : [8, 15, 16]
   θ диапазон : 58.0° – 90.0°
 
-─ Проверка файлов ────────────────────────────────────
-                       1.0Grad       1.5Grad       2.0Grad       2.5Grad
-npl3              OK (18 дет.)       MISSING       MISSING       MISSING
-npl4              OK (18 дет.)  OK (18 дет.)  OK (18 дет.)  OK (18 дет.)
-npl5              OK (18 дет.)  OK (18 дет.)  OK (18 дет.)  OK (18 дет.)
-npl6              ANOMAL (φ=2)  OK (18 дет.)  OK (18 дет.)  OK (18 дет.)
+─ Проверка файлов ──────────────────────────────────────
+                   1.0Grad       1.5Grad       2.0Grad       2.5Grad
+npl3            OK (18 дет.)      MISSING       MISSING       MISSING
+npl4            OK (18 дет.)  OK (18 дет.)  OK (18 дет.)  OK (18 дет.)
+npl5            OK (18 дет.)  OK (18 дет.)  OK (18 дет.)  OK (18 дет.)
+npl6          ANOMAL (φ=2)   OK (18 дет.)  OK (18 дет.)  OK (18 дет.)
 ```
 
 ### 4. Запустить скрипты
@@ -135,7 +133,7 @@ python muon_anomaly_analysis.py
 0.25    0.00436    722              0.689
 ...
 ```
-> !!! Поправка надёжна только при θ_D ≤ 30° (соответствует θ_Земля ≥ 60°).
+> ⚠️ Поправка надёжна только при θ_D ≤ 30° (соответствует θ_Земля ≥ 60°).
 
 **`Input.txt`** — позиции детекторов в единой СК:
 ```
@@ -199,10 +197,18 @@ config.DATA_ROOT = Path("/другой/путь")
 
 ## Дальнейшие шаги (Roadmap)
 
-- [ ] Предобработка: применение поправок на эффективность (`apply_efficiency_correction` в `config.py`)
-- [ ] Подготовка датасета для ML: нормировка, log-преобразование, сглаживание и шумоподавление, train/val/test split
+- [x] Предобработка: поправка на эффективность, нормализация, log-преобразование (`muon_preprocessing.py`)
+- [x] Базовые методы сглаживания: Гаусс, градиент, вейвлет BayesShrink (`muon_smoothing.py`)
+- [x] Генератор синтетических данных: cos²θ + азим. вариации + аномалии + шум Пуассона (`muon_synth.py`)
+- [x] U-Net архитектура + двухэтапное обучение (pretraining → fine-tuning) (`muon_unet.py`)
 - [ ] Реализация U-Net-подобной модели для восстановления угловых распределений
-- [ ] Сравнение с базовыми методами сглаживания (Gaussian, bilateral filter)
+- [ ] Сравнение U-Net с базовыми методами по MSE и SSIM
 - [ ] 3D-визуализация: обратное проецирование угловых аномалий в пространство
 
 ---
+
+## Авторы
+
+| Участник | Роль |
+|---|---|
+| ... | ... |

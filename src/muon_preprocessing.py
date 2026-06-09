@@ -1101,21 +1101,6 @@ def main(
     print(f"  Данные: {PREPROC_DIR}")
     print(f"  Графики: {OUTPUT_DIR}")
 
-    print("\n─── Пример использования в следующем скрипте " + "─" * 14)
-    print("""
-  from muon_preprocessing import load_preprocessed, inverse_transform
-
-  data      = load_preprocessed("npl4", "2.0Grad")
-  grids     = data["grids"]        # shape (15, 17, 180)  -- вход в модель
-  grids_raw = data["grids_raw"]    # shape (15, 17, 180)  -- сырые данные
-  theta     = data["theta"]        # shape (17,)  -- ось θ
-  phi       = data["phi"]          # shape (180,) -- ось φ
-  detectors = data["detectors"]    # shape (15,)  -- номера детекторов
-
-  # Восстановить исходный масштаб из предсказания модели:
-  # n_tracks = inverse_transform(prediction, mode=str(data["transform_mode"]))
-    """)
-
     plt.show()
     return samples
 
