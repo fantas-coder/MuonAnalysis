@@ -648,7 +648,7 @@ def main(
 
     # Графики
     if show_samples:
-        print("\n─── Примеры образцов " + "─" * 38)
+        print("\n─── Примеры образцов  " + "─" * 38)
         plot_samples(n=3, theta_bins=theta_bins, seed=0, save=True)
 
     if show_noise:

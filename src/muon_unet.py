@@ -536,7 +536,7 @@ def train(
     checkpoint_every: int  = 10,
     resume_from:      Path | None = None,
     use_ssim_loss:    bool = False,
-    ssim_alpha:       float = 0.2,
+    ssim_alpha:       float = 0.5,
 ) -> TrainHistory:
     """
     Полный цикл обучения с сохранением лучшей модели по val_loss.
@@ -557,7 +557,7 @@ def train(
     """
     if use_ssim_loss:
         criterion = CombinedLoss(alpha=ssim_alpha)
-        print(f"  Функция потерь: CombinedLoss (MSE + {ssim_alpha}*SSIM)")
+        print(f"  Функция потерь: CombinedLoss (MSE + {ssim_alpha}·SSIM)")
     else:
         criterion = WeightedMSELoss()
     optimizer = optim.Adam(model.parameters(), lr=lr, weight_decay=WEIGHT_DECAY)
@@ -1028,7 +1028,7 @@ def main(
 
 if __name__ == "__main__":
     main(
-        stage="all",
+        stage="eval",
         npl="npl4",
         binning="2.0Grad",
         pretrain_epochs=PRETRAIN_EPOCHS,

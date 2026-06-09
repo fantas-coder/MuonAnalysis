@@ -145,7 +145,7 @@ SYNTH_NOISE_SCALE_RANGE: tuple[float, float] = (0.01, 0.04)
 # 0.25 = вариации ±25% от среднего
 SYNTH_AZIMUTH_VAR_AMP: float = 0.25
 
-# Параметры гауссовских аномалий
+# Параметры гауссовских  аномалий
 SYNTH_ANOMALY_AMP_RANGE:   tuple[float, float] = (0.05, 0.25)   # амплитуда (нормир.)
 SYNTH_ANOMALY_SIGMA_THETA: tuple[float, float] = (0.5, 1.5)     # ширина по θ (бинов)
 SYNTH_ANOMALY_SIGMA_PHI:   tuple[float, float] = (2.0, 6.0)     # ширина по φ (бинов)
